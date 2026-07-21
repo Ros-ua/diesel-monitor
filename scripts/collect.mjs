@@ -44,19 +44,24 @@ async function readJson(file, fallback) {
 
 const round2 = v => (v === null || v === undefined ? null : Math.round(v * 100) / 100);
 
+// --news-only: легкий режим для частого запуску — лише RSS-новини, без цін
+const newsOnly = process.argv.includes('--news-only');
+
 async function main() {
   await mkdir(DATA_DIR, { recursive: true });
   const today = kyivToday();
-  log(`Збір за ${today}`);
+  log(`Збір за ${today}${newsOnly ? ' (лише новини)' : ''}`);
 
   const [detailHtml, avgHtml, nbu, nbuEur, brentJson, news] = await Promise.all([
-    retry('minfin-detail', () => fetchPage(DETAIL_URL)),
-    retry('minfin-avg', () => fetchPage(AVG_URL)),
-    retry('nbu', () => fetch(NBU_URL).then(r => r.json())),
-    retry('nbu-eur', () => fetch(NBU_EUR_URL).then(r => r.json())),
-    retry('brent', () =>
-      fetch(BRENT_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json())
-    ),
+    newsOnly ? null : retry('minfin-detail', () => fetchPage(DETAIL_URL)),
+    newsOnly ? null : retry('minfin-avg', () => fetchPage(AVG_URL)),
+    newsOnly ? null : retry('nbu', () => fetch(NBU_URL).then(r => r.json())),
+    newsOnly ? null : retry('nbu-eur', () => fetch(NBU_EUR_URL).then(r => r.json())),
+    newsOnly
+      ? null
+      : retry('brent', () =>
+          fetch(BRENT_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json())
+        ),
     retry('news', () => collectNews()),
   ]);
 
@@ -67,7 +72,8 @@ async function main() {
   const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
   const brent = round2(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null);
 
-  if (!averages && !detail) throw new Error('Жодне джерело цін недоступне — історію не оновлено');
+  if (!newsOnly && !averages && !detail)
+    throw new Error('Жодне джерело цін недоступне — історію не оновлено');
 
   const networks = detail ? nationalNetworks(detail.regions) : null;
 
@@ -77,22 +83,24 @@ async function main() {
   if (pageDate !== today) log(`Увага: мінфін ще показує дані за ${pageDate}`);
 
   // ── history.json: одна точка на день ──
-  const history = await readJson('history.json', { days: [] });
-  const entry = {
-    date: pageDate,
-    source: 'minfin',
-    ...(averages && { avg: averages.avg }),
-    ...(networks && { networks }),
-    ...(usd !== null && { usd }),
-    ...(brent !== null && { brent }),
-  };
-  const idx = history.days.findIndex(d => d.date === pageDate);
-  if (idx >= 0) history.days[idx] = { ...history.days[idx], ...entry };
-  else history.days.push(entry);
-  history.days.sort((a, b) => a.date.localeCompare(b.date));
-  history.updated = new Date().toISOString();
-  await writeFile(path.join(DATA_DIR, 'history.json'), JSON.stringify(history));
-  log(`history.json: ${history.days.length} днів`);
+  if (!newsOnly) {
+    const history = await readJson('history.json', { days: [] });
+    const entry = {
+      date: pageDate,
+      source: 'minfin',
+      ...(averages && { avg: averages.avg }),
+      ...(networks && { networks }),
+      ...(usd !== null && { usd }),
+      ...(brent !== null && { brent }),
+    };
+    const idx = history.days.findIndex(d => d.date === pageDate);
+    if (idx >= 0) history.days[idx] = { ...history.days[idx], ...entry };
+    else history.days.push(entry);
+    history.days.sort((a, b) => a.date.localeCompare(b.date));
+    history.updated = new Date().toISOString();
+    await writeFile(path.join(DATA_DIR, 'history.json'), JSON.stringify(history));
+    log(`history.json: ${history.days.length} днів`);
+  }
 
   // ── latest.json: повний поточний зріз ──
   if (detail || averages) {
@@ -145,14 +153,16 @@ async function main() {
     log(`news.json: +${news.items.length} свіжих, в архіві ${merged.length}${news.errors.length ? `, помилки: ${news.errors.join('; ')}` : ''}`);
   }
 
-  // ── журнал запусків ──
-  const runlog = await readJson('collect-log.json', { runs: [] });
-  runlog.runs.push({
-    at: new Date().toISOString(),
-    ok: { detail: !!detail, averages: !!averages, usd: usd !== null, brent: brent !== null, news: !!news?.items?.length },
-  });
-  runlog.runs = runlog.runs.slice(-100);
-  await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));
+  // ── журнал запусків (лише повний збір) ──
+  if (!newsOnly) {
+    const runlog = await readJson('collect-log.json', { runs: [] });
+    runlog.runs.push({
+      at: new Date().toISOString(),
+      ok: { detail: !!detail, averages: !!averages, usd: usd !== null, brent: brent !== null, news: !!news?.items?.length },
+    });
+    runlog.runs = runlog.runs.slice(-100);
+    await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));
+  }
 
   log('Готово');
 }

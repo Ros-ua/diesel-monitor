@@ -1,0 +1,72 @@
+name: Збір новин (кожні 2 години)
+
+on:
+  schedule:
+    # кожні 2 години о :25 (не перетинається зі збором цін о :10)
+    - cron: '25 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# та сама група, що й у збору цін — запуски не конфліктують за git push
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Збір новин
+        run: node scripts/collect.mjs --news-only
+      - name: Коміт оновлених новин
+        id: commit
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/data/news.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Новини без змін"
+          else
+            git commit -m "data: автооновлення новин $(date -u +%Y-%m-%d_%H:%M)"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: news
+    if: needs.news.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: git pull --ff-only
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
