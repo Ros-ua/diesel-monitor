@@ -14,6 +14,17 @@ interface RegionStat {
   count: number;
 }
 
+// Повний перелік областей України + АР Крим: ті, по яких джерело не дає цін
+// (окуповані території), показуємо сірими картками «немає даних».
+// Мінфін рахує м. Київ у складі Київської області, окремої таблиці немає.
+const ALL_REGIONS = [
+  'Вінницька', 'Волинська', 'Дніпропетровська', 'Донецька', 'Житомирська',
+  'Закарпатська', 'Запорізька', 'Івано-Франківська', 'Київська', 'Кіровоградська',
+  'Луганська', 'Львівська', 'Миколаївська', 'Одеська', 'Полтавська', 'Рівненська',
+  'Сумська', 'Тернопільська', 'Харківська', 'Херсонська', 'Хмельницька',
+  'Черкаська', 'Чернівецька', 'Чернігівська', 'АР Крим',
+];
+
 /** «1 мережа», «3 мережі», «7 мереж» */
 function networksWord(n: number): string {
   const d10 = n % 10;
@@ -53,6 +64,11 @@ export default function RegionsPanel() {
     return out.sort((a, b) => a.med - b.med);
   }, [latest.regions, fuel]);
 
+  const missing = useMemo(
+    () => ALL_REGIONS.filter(name => !(latest.regions && name in latest.regions)),
+    [latest.regions]
+  );
+
   if (!stats.length) return null;
 
   const colorFor = (i: number): string =>
@@ -81,6 +97,16 @@ export default function RegionsPanel() {
                 {r.count} {networksWord(r.count)}
               </div>
             </Link>
+          </motion.div>
+        ))}
+
+        {missing.map(name => (
+          <motion.div key={name} variants={item}>
+            <div className="border border-transparent rounded px-2 py-1.5 opacity-60">
+              <div className="text-[10px] text-muted truncate">{name}</div>
+              <div className="text-[15px] font-bold leading-tight text-muted">—</div>
+              <div className="text-[8px] text-muted/60">немає даних</div>
+            </div>
           </motion.div>
         ))}
       </div>

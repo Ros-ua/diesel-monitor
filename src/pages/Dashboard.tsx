@@ -6,7 +6,6 @@ import NewsWidget from '../components/NewsWidget';
 import NetworksTable from '../components/NetworksTable';
 import AnalyticsPanel from '../components/AnalyticsPanel';
 import ForecastPanel from '../components/ForecastPanel';
-import AlertsPanel from '../components/AlertsPanel';
 import RegionsPanel from '../components/RegionsPanel';
 
 export default function Dashboard() {
@@ -30,10 +29,9 @@ export default function Dashboard() {
 
       <NetworksTable />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
         <AnalyticsPanel />
         <ForecastPanel />
-        <AlertsPanel />
       </div>
 
       <RegionsPanel />

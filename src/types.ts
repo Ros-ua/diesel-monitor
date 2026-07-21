@@ -86,11 +86,3 @@ export interface Factors {
   updated: string;
   days: FactorsDay[];
 }
-
-// ── Сповіщення (зберігаються у localStorage) ──
-
-export type AlertRule =
-  | { id: string; kind: 'below'; fuel: FuelKey; value: number }
-  | { id: string; kind: 'above'; fuel: FuelKey; value: number }
-  | { id: string; kind: 'network-change'; network: string }
-  | { id: string; kind: 'avg-move'; percent: number };
