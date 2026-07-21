@@ -1,6 +1,6 @@
 // DriversPanel — «Чому змінюється ціна»: автоматичний список чинників тиску на ціну ДП
-import { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
 import { drivers, type Driver } from '../lib/drivers';
 
@@ -20,13 +20,18 @@ function StrengthDots({ strength, dir }: { strength: Driver['strength']; dir: Dr
 }
 
 function DriverRow({ driver, index }: { driver: Driver; index: number }) {
+  const [open, setOpen] = useState(false);
   const dirColor = driver.dir === 'up' ? 'text-danger' : 'text-accent';
   return (
     <motion.div
-      className="border-b border-line/50 py-2 last:border-b-0"
+      className="border-b border-line/50 py-2 last:border-b-0 cursor-pointer select-none"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: 0.05 + index * 0.05 }}
+      onClick={() => setOpen(o => !o)}
+      role="button"
+      aria-expanded={open}
+      title={open ? 'Згорнути пояснення' : 'Як це впливає на ціну?'}
     >
       <div className="flex items-center gap-2">
         <span className={`text-[14px] leading-none shrink-0 ${dirColor}`} aria-hidden="true">
@@ -34,8 +39,29 @@ function DriverRow({ driver, index }: { driver: Driver; index: number }) {
         </span>
         <span className="text-xs text-[#e0ede9] flex-1 min-w-0 leading-tight">{driver.label}</span>
         <StrengthDots strength={driver.strength} dir={driver.dir} />
+        <span
+          className={`text-[9px] shrink-0 transition-transform duration-200 ${open ? 'rotate-180 text-accent' : 'text-muted/60'}`}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
       </div>
       <div className="text-[10px] text-muted mt-0.5 pl-[22px] leading-snug">{driver.detail}</div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="text-[10px] text-[#e0ede9]/70 mt-1.5 pl-[22px] pr-1 leading-relaxed border-l border-accent/30 ml-[3px]">
+              {driver.explain}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -65,7 +91,8 @@ export default function DriversPanel() {
       </div>
 
       <div className="text-[9px] text-muted/60 mt-2 pt-2">
-        Автоматичний аналіз чинників · Brent, курс НБУ, динаміка цін, новини
+        Автоматичний аналіз чинників · Brent, курс НБУ, динаміка цін, новини · клік по чиннику —
+        пояснення
       </div>
     </motion.div>
   );
