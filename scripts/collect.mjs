@@ -126,13 +126,23 @@ async function main() {
     await writeFile(path.join(DATA_DIR, 'factors.json'), JSON.stringify(factors));
   }
 
-  // ── news.json ──
+  // ── news.json: архів накопичується — свіжі зливаються зі збереженими ──
   if (news?.items?.length) {
+    const NEWS_CAP = 150;
+    const oldNews = await readJson('news.json', { items: [] });
+    const byUrl = new Map();
+    // свіжа версія новини має пріоритет над збереженою (могла оновитись класифікація)
+    for (const item of [...news.items, ...oldNews.items]) {
+      if (item?.url && !byUrl.has(item.url)) byUrl.set(item.url, item);
+    }
+    const merged = [...byUrl.values()]
+      .sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''))
+      .slice(0, NEWS_CAP);
     await writeFile(
       path.join(DATA_DIR, 'news.json'),
-      JSON.stringify({ updated: new Date().toISOString(), items: news.items })
+      JSON.stringify({ updated: new Date().toISOString(), items: merged })
     );
-    log(`news.json: ${news.items.length} новин${news.errors.length ? `, помилки: ${news.errors.join('; ')}` : ''}`);
+    log(`news.json: +${news.items.length} свіжих, в архіві ${merged.length}${news.errors.length ? `, помилки: ${news.errors.join('; ')}` : ''}`);
   }
 
   // ── журнал запусків ──

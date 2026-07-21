@@ -21,7 +21,12 @@ export default function NewsWidget() {
       transition={{ duration: 0.3 }}
     >
       <div className="flex items-baseline justify-between gap-2 mb-2">
-        <div className="lbl">НОВИНИ РИНКУ</div>
+        <div className="lbl">
+          НОВИНИ РИНКУ
+          {news && news.items.length > 0 && (
+            <span className="text-muted/70 ml-1.5">({news.items.length})</span>
+          )}
+        </div>
         <div className="text-[8px] text-muted whitespace-nowrap">
           🔴 тисне вгору · 🟢 вниз · 🟡 нейтрально
         </div>
@@ -39,7 +44,7 @@ export default function NewsWidget() {
                 className="border-b border-line/50 py-2"
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: i * 0.03 }}
+                transition={{ duration: 0.25, delay: Math.min(i, 12) * 0.03 }}
               >
                 <div className="flex items-start gap-1.5">
                   <span className="text-[10px] leading-4 shrink-0">
@@ -68,7 +73,7 @@ export default function NewsWidget() {
       )}
 
       <div className="text-[9px] text-muted/60 mt-2">
-        Автодобірка за ключовими словами · Економічна правда, УНІАН
+        Автодобірка за ключовими словами · Економічна правда, УНІАН · архів накопичується
       </div>
     </motion.div>
   );
