@@ -4,6 +4,8 @@
 const FEEDS = [
   { url: 'https://epravda.com.ua/rss/', source: 'Економічна правда' },
   { url: 'https://rss.unian.net/site/news_ukr.rss', source: 'УНІАН' },
+  { url: 'https://www.ukrinform.ua/rss/rubric-economy', source: 'Укрінформ' },
+  { url: 'https://www.rbc.ua/static/rss/all.ukr.rss.xml', source: 'РБК-Україна' },
 ];
 
 // Новина потрапляє у стрічку, лише якщо стосується паливного ринку.

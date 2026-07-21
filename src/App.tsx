@@ -39,7 +39,7 @@ function Footer() {
         <a href="https://bank.gov.ua" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
           НБУ
         </a>
-        {' · '}Yahoo Finance (Brent){' · '}Економічна правда, УНІАН (новини)
+        {' · '}Yahoo Finance (Brent){' · '}новини: ЕП, УНІАН, Укрінформ, РБК-Україна
       </p>
       <p className="mt-1">
         Ціни оновлюються щодня автоматично. Прогнози — статистичні оцінки за історичними даними,
