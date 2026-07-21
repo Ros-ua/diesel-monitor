@@ -1,0 +1,103 @@
+@import 'tailwindcss';
+
+/* Дизайн-токени — ті самі, що у Pro Speedtest (vpn-speedtest) */
+@theme {
+  --color-bg: #0a0e12;
+  --color-surface: #111820;
+  --color-accent: #00d2aa;
+  --color-accent2: #00aaff;
+  --color-warn: #ffb347;
+  --color-danger: #ff5f5f;
+  --color-purple: #aa88ff;
+  --color-muted: #5a7a72;
+  --color-line: rgba(0, 210, 170, 0.15);
+  --color-grid: rgba(0, 210, 170, 0.05);
+  --font-mono: 'Courier New', Courier, monospace;
+}
+
+html {
+  background: var(--color-bg);
+  color: #e0ede9;
+  font-family: var(--font-mono);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Тонкі скролбари, як у Speedtest */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+*::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes flashval {
+  0%, 100% { opacity: 1; }
+  30% { opacity: 0.1; }
+}
+
+/* Утиліти в стилі Speedtest */
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 5px;
+}
+
+@utility lbl {
+  font-size: 9px;
+  color: var(--color-muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+@utility scanlines {
+  background-image: repeating-linear-gradient(
+    0deg,
+    var(--color-grid) 0px,
+    var(--color-grid) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+}
+
+@utility btn {
+  background: transparent;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s;
+  &:hover { background: var(--color-accent); color: var(--color-bg); }
+  &:disabled { opacity: 0.28; cursor: default; pointer-events: none; }
+}
+
+@utility btn-ghost {
+  border-color: var(--color-line);
+  color: var(--color-muted);
+  &:hover { background: transparent; color: var(--color-accent); border-color: var(--color-accent); }
+}
+
+@utility btn-danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  &:hover { background: var(--color-danger); color: var(--color-bg); }
+}

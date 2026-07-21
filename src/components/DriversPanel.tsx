@@ -1,0 +1,72 @@
+// DriversPanel — «Чому змінюється ціна»: автоматичний список чинників тиску на ціну ДП
+import { useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { useAppData } from '../context/DataContext';
+import { drivers, type Driver } from '../lib/drivers';
+
+/** Сила чинника: заповнені/порожні крапки, напр. ●●○ */
+function StrengthDots({ strength, dir }: { strength: Driver['strength']; dir: Driver['dir'] }) {
+  const color = dir === 'up' ? 'text-danger' : 'text-accent';
+  return (
+    <span
+      className="text-[9px] tracking-[0.2em] whitespace-nowrap shrink-0"
+      aria-label={`сила ${strength} з 3`}
+      title={`сила чинника: ${strength} з 3`}
+    >
+      <span className={color}>{'●'.repeat(strength)}</span>
+      <span className="text-muted/40">{'○'.repeat(3 - strength)}</span>
+    </span>
+  );
+}
+
+function DriverRow({ driver, index }: { driver: Driver; index: number }) {
+  const dirColor = driver.dir === 'up' ? 'text-danger' : 'text-accent';
+  return (
+    <motion.div
+      className="border-b border-line/50 py-2 last:border-b-0"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: 0.05 + index * 0.05 }}
+    >
+      <div className="flex items-center gap-2">
+        <span className={`text-[14px] leading-none shrink-0 ${dirColor}`} aria-hidden="true">
+          {driver.dir === 'up' ? '↑' : '↓'}
+        </span>
+        <span className="text-xs text-[#e0ede9] flex-1 min-w-0 leading-tight">{driver.label}</span>
+        <StrengthDots strength={driver.strength} dir={driver.dir} />
+      </div>
+      <div className="text-[10px] text-muted mt-0.5 pl-[22px] leading-snug">{driver.detail}</div>
+    </motion.div>
+  );
+}
+
+export default function DriversPanel() {
+  const { history, factors, news } = useAppData();
+
+  const list = useMemo(() => drivers(history, factors, news), [history, factors, news]);
+
+  return (
+    <motion.div
+      className="card p-3 h-full flex flex-col"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+    >
+      <div className="lbl mb-2">Чому змінюється ціна</div>
+
+      <div className="flex-1">
+        {list.length === 0 ? (
+          <div className="text-muted text-xs py-4">
+            Суттєвих рухів чинників за тиждень не зафіксовано
+          </div>
+        ) : (
+          list.map((d, i) => <DriverRow key={d.label} driver={d} index={i} />)
+        )}
+      </div>
+
+      <div className="text-[9px] text-muted/60 mt-2 pt-2">
+        Автоматичний аналіз чинників · Brent, курс НБУ, динаміка цін, новини
+      </div>
+    </motion.div>
+  );
+}
