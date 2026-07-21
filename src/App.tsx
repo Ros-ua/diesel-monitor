@@ -44,6 +44,13 @@ function Footer() {
         Ціни оновлюються щодня автоматично. Прогнози — статистичні оцінки за історичними даними,
         не є фінансовою порадою і не гарантують майбутніх цін.
       </p>
+      <p className="mt-1">
+        Зв'язок та пропозиції:{' '}
+        <a href="https://t.me/Ros_Hangzhou" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
+          @Ros_Hangzhou
+        </a>{' '}
+        (Telegram)
+      </p>
     </footer>
   );
 }

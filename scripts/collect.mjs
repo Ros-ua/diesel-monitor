@@ -71,17 +71,22 @@ async function main() {
 
   const networks = detail ? nationalNetworks(detail.regions) : null;
 
+  // Дата даних — зі сторінки мінфіну (вона оновлюється ~опівдні за Києвом;
+  // вранці сторінка ще показує вчорашні ціни, і їх треба писати під вчорашньою датою)
+  const pageDate = averages?.date ? averages.date.split('.').reverse().join('-') : today;
+  if (pageDate !== today) log(`Увага: мінфін ще показує дані за ${pageDate}`);
+
   // ── history.json: одна точка на день ──
   const history = await readJson('history.json', { days: [] });
   const entry = {
-    date: today,
+    date: pageDate,
     source: 'minfin',
     ...(averages && { avg: averages.avg }),
     ...(networks && { networks }),
     ...(usd !== null && { usd }),
     ...(brent !== null && { brent }),
   };
-  const idx = history.days.findIndex(d => d.date === today);
+  const idx = history.days.findIndex(d => d.date === pageDate);
   if (idx >= 0) history.days[idx] = { ...history.days[idx], ...entry };
   else history.days.push(entry);
   history.days.sort((a, b) => a.date.localeCompare(b.date));
@@ -92,7 +97,7 @@ async function main() {
   // ── latest.json: повний поточний зріз ──
   if (detail || averages) {
     const latest = {
-      date: today,
+      date: pageDate,
       collectedAt: new Date().toISOString(),
       ...(averages && { avg: averages.avg, avgChange: averages.change }),
       ...(networks && { networks }),
