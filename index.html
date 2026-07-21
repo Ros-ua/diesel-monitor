@@ -7,6 +7,27 @@
     <meta name="description" content="Дизель Монітор — ціни на дизельне пальне в Україні: мережі АЗС, області, історія, аналітика, прогноз, новини ринку." />
     <meta name="theme-color" content="#0a0e12" />
     <title>Дизель Монітор — ціни на ДП в Україні</title>
+    <script>
+      // GoatCounter: сайт на hash-роутері, тож включаємо hash у шлях
+      // і докидаємо перегляд при навігації всередині SPA
+      window.goatcounter = {
+        path: function () {
+          return location.pathname + location.search + location.hash;
+        },
+      };
+      window.addEventListener('hashchange', function () {
+        if (window.goatcounter && window.goatcounter.count) {
+          window.goatcounter.count({
+            path: location.pathname + location.search + location.hash,
+          });
+        }
+      });
+    </script>
+    <script
+      data-goatcounter="https://diesel-monitor.goatcounter.com/count"
+      async
+      src="https://gc.zgo.at/count.js"
+    ></script>
   </head>
   <body>
     <div id="root"></div>
