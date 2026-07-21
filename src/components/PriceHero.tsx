@@ -95,9 +95,10 @@ export default function PriceHero() {
             )}
           </div>
 
-          {(latest.usd !== undefined || latest.brent !== undefined) && (
+          {(latest.usd !== undefined || latest.eur !== undefined || latest.brent !== undefined) && (
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted">
               {latest.usd !== undefined && <span>USD/UAH {fmtPrice(latest.usd)}</span>}
+              {latest.eur !== undefined && <span>EUR/UAH {fmtPrice(latest.eur)}</span>}
               {latest.brent !== undefined && <span>Brent {fmtPrice(latest.brent)} $/бар</span>}
             </div>
           )}

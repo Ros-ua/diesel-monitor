@@ -13,6 +13,7 @@ const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 const DETAIL_URL = 'https://index.minfin.com.ua/ua/markets/fuel/detail/';
 const AVG_URL = 'https://index.minfin.com.ua/ua/markets/fuel/';
 const NBU_URL = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&json';
+const NBU_EUR_URL = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=EUR&json';
 const BRENT_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/BZ=F?range=5d&interval=1d';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -48,10 +49,11 @@ async function main() {
   const today = kyivToday();
   log(`Збір за ${today}`);
 
-  const [detailHtml, avgHtml, nbu, brentJson, news] = await Promise.all([
+  const [detailHtml, avgHtml, nbu, nbuEur, brentJson, news] = await Promise.all([
     retry('minfin-detail', () => fetchPage(DETAIL_URL)),
     retry('minfin-avg', () => fetchPage(AVG_URL)),
     retry('nbu', () => fetch(NBU_URL).then(r => r.json())),
+    retry('nbu-eur', () => fetch(NBU_EUR_URL).then(r => r.json())),
     retry('brent', () =>
       fetch(BRENT_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json())
     ),
@@ -61,6 +63,7 @@ async function main() {
   const detail = detailHtml ? parseDetail(detailHtml) : null;
   const averages = avgHtml ? parseAverages(avgHtml) : null;
   const usd = round2(nbu?.[0]?.rate ?? null);
+  const eur = round2(nbuEur?.[0]?.rate ?? null);
   const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
   const brent = round2(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null);
 
@@ -95,6 +98,7 @@ async function main() {
       ...(networks && { networks }),
       ...(detail && { regions: detail.regions }),
       ...(usd !== null && { usd }),
+      ...(eur !== null && { eur }),
       ...(brent !== null && { brent }),
     };
     await writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify(latest));

@@ -38,6 +38,7 @@ export interface Latest {
   networks?: Record<string, NetworkPrices>;
   regions?: Record<string, Record<string, FuelPrices>>;
   usd?: number;
+  eur?: number;
   brent?: number;
 }
 
