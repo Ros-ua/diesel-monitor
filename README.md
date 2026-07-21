@@ -3,7 +3,7 @@
 Дашборд цін на дизельне пальне в Україні у стилі фінансового термінала.
 Візуальна мова успадкована від [vpn-speedtest](https://github.com/Ros-ua/vpn-speedtest) (Pro Speedtest).
 
-**Живий сайт:** https://ros-ua.github.io/diesel-monitor/
+**Живий сайт:** https://diesel-monitor.pp.ua/
 
 ## Що показує
 

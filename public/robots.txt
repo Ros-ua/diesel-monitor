@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://ros-ua.github.io/diesel-monitor/sitemap.xml
+Sitemap: https://diesel-monitor.pp.ua/sitemap.xml
