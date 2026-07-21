@@ -27,6 +27,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Свіжа SEO-мета (ціна дня в description)
+        run: node scripts/seo.mjs
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
