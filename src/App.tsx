@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Link, Route, Routes } from 'react-router-dom';
 import { useDataState } from './context/DataContext';
 import { timeAgo } from './lib/format';
+import ViewCounter from './components/ViewCounter';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const NetworkPage = lazy(() => import('./pages/NetworkPage'));
@@ -49,7 +50,7 @@ function Footer() {
         <a href="https://t.me/Ros_Hangzhou" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
           @Ros_Hangzhou
         </a>{' '}
-        (Telegram)
+        (Telegram) <ViewCounter />
       </p>
     </footer>
   );
