@@ -4,10 +4,11 @@ import { motion } from 'framer-motion';
 import type { EChartsCoreOption } from 'echarts/core';
 import Chart from './Chart';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
 import { avgSeries, clipRange, toTime, type SeriesPoint } from '../lib/stats';
 import { fmtDate, fmtDateShort, fmtPrice } from '../lib/format';
 import { AXIS_DEFAULTS, CHART_COLORS, TOOLTIP_DEFAULTS } from '../lib/echarts';
-import { FUEL_LABELS, FUEL_ORDER, type FuelKey } from '../types';
+import { FUEL_SHORT } from '../types';
 
 const RANGES: { label: string; days: number | null }[] = [
   { label: '7Д', days: 7 },
@@ -17,15 +18,6 @@ const RANGES: { label: string; days: number | null }[] = [
   { label: '1Р', days: 365 },
   { label: 'ВСЕ', days: null },
 ];
-
-/** Короткі підписи пального для кнопок-перемикачів */
-const FUEL_SHORT: Record<FuelKey, string> = {
-  dp: 'ДП',
-  a95p: 'А-95+',
-  a95: 'А-95',
-  a92: 'А-92',
-  gas: 'Газ',
-};
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -128,8 +120,8 @@ function buildOption(pts: SeriesPoint[], longRange: boolean): EChartsCoreOption 
 
 export default function PriceChart() {
   const { history } = useAppData();
+  const { fuel } = useFuel();
   const [rangeDays, setRangeDays] = useState<number | null>(90);
-  const [fuel, setFuel] = useState<FuelKey>('dp');
 
   const fullSeries = useMemo(() => avgSeries(history.days, fuel), [history.days, fuel]);
   const pts = useMemo(() => clipRange(fullSeries, rangeDays), [fullSeries, rangeDays]);
@@ -153,7 +145,7 @@ export default function PriceChart() {
       transition={{ duration: 0.3 }}
     >
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <div className="lbl">Динаміка цін</div>
+        <div className="lbl">Динаміка цін — {FUEL_SHORT[fuel]}</div>
         <div className="ml-auto flex flex-wrap gap-1">
           {RANGES.map(r => (
             <button
@@ -166,20 +158,6 @@ export default function PriceChart() {
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1 mb-2">
-        {FUEL_ORDER.map(f => (
-          <button
-            key={f}
-            type="button"
-            title={FUEL_LABELS[f]}
-            onClick={() => setFuel(f)}
-            className={`${f === fuel ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
-          >
-            {FUEL_SHORT[f]}
-          </button>
-        ))}
       </div>
 
       {pts.length === 0 ? (

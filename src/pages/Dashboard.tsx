@@ -1,3 +1,4 @@
+import FuelTickers from '../components/FuelTickers';
 import PriceHero from '../components/PriceHero';
 import PriceChart from '../components/PriceChart';
 import DriversPanel from '../components/DriversPanel';
@@ -11,6 +12,8 @@ import RegionsPanel from '../components/RegionsPanel';
 export default function Dashboard() {
   return (
     <div className="flex flex-col gap-2.5">
+      <FuelTickers />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
         <div className="lg:col-span-2">
           <PriceHero />

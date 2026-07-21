@@ -1,8 +1,10 @@
-// Огляд областей: медіанна ціна ДП по мережах кожної області
+// Огляд областей: медіанна ціна вибраного пального по мережах кожної області
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, type Variants } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
+import { FUEL_SHORT } from '../types';
 import { median } from '../lib/stats';
 import { fmtPrice } from '../lib/format';
 
@@ -37,18 +39,19 @@ const item: Variants = {
 
 export default function RegionsPanel() {
   const { latest } = useAppData();
+  const { fuel } = useFuel();
 
   const stats = useMemo<RegionStat[]>(() => {
     const out: RegionStat[] = [];
     for (const [name, networks] of Object.entries(latest.regions ?? {})) {
       const prices = Object.values(networks)
-        .map(p => p.dp)
+        .map(p => p[fuel])
         .filter((v): v is number => v !== undefined);
       const med = median(prices);
       if (med !== null) out.push({ name, med, count: prices.length });
     }
     return out.sort((a, b) => a.med - b.med);
-  }, [latest.regions]);
+  }, [latest.regions, fuel]);
 
   if (!stats.length) return null;
 
@@ -62,7 +65,7 @@ export default function RegionsPanel() {
       initial="hidden"
       animate="show"
     >
-      <div className="lbl mb-2">Ціни по областях — дизель (медіана)</div>
+      <div className="lbl mb-2">Ціни по областях — {FUEL_SHORT[fuel]} (медіана)</div>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-1.5">
         {stats.map((r, i) => (
           <motion.div key={r.name} variants={item}>

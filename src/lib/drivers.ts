@@ -1,7 +1,7 @@
 // Автоматичне пояснення «чому змінюється ціна»: рахуємо рухи факторів
 // (Brent, курс USD, середня ціна, розкид мереж) та сигнали з новин.
 
-import type { Factors, History, News } from '../types';
+import { FUEL_SHORT, type Factors, type FuelKey, type History, type News } from '../types';
 import { avgSeries, changeOver, type SeriesPoint } from './stats';
 
 export interface Driver {
@@ -9,7 +9,7 @@ export interface Driver {
   dir: 'up' | 'down';
   strength: 1 | 2 | 3;
   detail: string;
-  /** Пояснення механізму: як саме цей чинник впливає на ціну ДП */
+  /** Пояснення механізму: як саме цей чинник впливає на ціну пального */
   explain: string;
 }
 
@@ -38,7 +38,12 @@ function strengthFromPct(pct: number, s1: number, s2: number): 1 | 2 | 3 {
 }
 
 /** Список чинників за останні ~7 днів, найсильніші перші */
-export function drivers(history: History, factors: Factors | null, news: News | null): Driver[] {
+export function drivers(
+  history: History,
+  factors: Factors | null,
+  news: News | null,
+  fuel: FuelKey = 'dp'
+): Driver[] {
   const out: Driver[] = [];
 
   // Brent за 7 днів
@@ -66,15 +71,15 @@ export function drivers(history: History, factors: Factors | null, news: News | 
     });
   }
 
-  // Рух середньої ціни ДП за 7 і 30 днів
-  const dp = avgSeries(history.days, 'dp');
-  const dp7 = changeOver(dp, 7);
-  if (dp7 && Math.abs(dp7.abs) >= 0.2) {
+  // Рух середньої ціни вибраного пального за 7 днів
+  const avg = avgSeries(history.days, fuel);
+  const avg7 = changeOver(avg, 7);
+  if (avg7 && Math.abs(avg7.abs) >= 0.2) {
     out.push({
-      label: `Середня ціна ДП ${dp7.abs > 0 ? 'росте' : 'знижується'}`,
-      dir: dp7.abs > 0 ? 'up' : 'down',
-      strength: strengthFromPct(dp7.pct, 1, 3),
-      detail: `${dp7.abs > 0 ? '+' : '−'}${fmt(Math.abs(dp7.abs), 2)} грн/л з ${dp7.fromDate.slice(8, 10)}.${dp7.fromDate.slice(5, 7)}`,
+      label: `Середня ціна ${FUEL_SHORT[fuel]} ${avg7.abs > 0 ? 'росте' : 'знижується'}`,
+      dir: avg7.abs > 0 ? 'up' : 'down',
+      strength: strengthFromPct(avg7.pct, 1, 3),
+      detail: `${avg7.abs > 0 ? '+' : '−'}${fmt(Math.abs(avg7.abs), 2)} грн/л з ${avg7.fromDate.slice(8, 10)}.${avg7.fromDate.slice(5, 7)}`,
       explain: EXPLAIN.momentum,
     });
   }

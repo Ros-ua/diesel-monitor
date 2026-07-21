@@ -4,12 +4,15 @@ import { HashRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { DataProviderComponent } from './context/DataContext.tsx'
+import { FuelProvider } from './context/FuelContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HashRouter>
       <DataProviderComponent>
-        <App />
+        <FuelProvider>
+          <App />
+        </FuelProvider>
       </DataProviderComponent>
     </HashRouter>
   </StrictMode>,

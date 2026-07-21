@@ -12,6 +12,24 @@ export const FUEL_LABELS: Record<FuelKey, string> = {
 
 export const FUEL_ORDER: FuelKey[] = ['dp', 'a95p', 'a95', 'a92', 'gas'];
 
+/** Короткі назви для тикерів і кнопок */
+export const FUEL_SHORT: Record<FuelKey, string> = {
+  dp: 'ДП',
+  a95p: 'А-95+',
+  a95: 'А-95',
+  a92: 'А-92',
+  gas: 'ГАЗ',
+};
+
+/** Повні назви для hero-заголовка («СЕРЕДНЯ ЦІНА … ПО УКРАЇНІ») */
+export const FUEL_HERO: Record<FuelKey, string> = {
+  dp: 'ДП',
+  a95p: 'А-95 преміум',
+  a95: 'А-95',
+  a92: 'А-92',
+  gas: 'автогазу',
+};
+
 export type FuelPrices = Partial<Record<FuelKey, number>>;
 
 export type NetworkPrices = FuelPrices & { regionCount?: number };

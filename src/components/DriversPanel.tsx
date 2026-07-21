@@ -1,7 +1,8 @@
-// DriversPanel — «Чому змінюється ціна»: автоматичний список чинників тиску на ціну ДП
+// DriversPanel — «Чому змінюється ціна»: автоматичний список чинників тиску на ціну пального
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
 import { drivers, type Driver } from '../lib/drivers';
 
 /** Сила чинника: заповнені/порожні крапки, напр. ●●○ */
@@ -68,8 +69,9 @@ function DriverRow({ driver, index }: { driver: Driver; index: number }) {
 
 export default function DriversPanel() {
   const { history, factors, news } = useAppData();
+  const { fuel } = useFuel();
 
-  const list = useMemo(() => drivers(history, factors, news), [history, factors, news]);
+  const list = useMemo(() => drivers(history, factors, news, fuel), [history, factors, news, fuel]);
 
   return (
     <motion.div

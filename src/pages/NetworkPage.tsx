@@ -1,10 +1,11 @@
-// Сторінка мережі АЗС: поточні ціни, історія ДП, статистика, ціни по областях
+// Сторінка мережі АЗС: поточні ціни, історія вибраного пального, статистика, ціни по областях
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import type { EChartsCoreOption } from 'echarts/core';
 import { useAppData } from '../context/DataContext';
-import { FUEL_LABELS, FUEL_ORDER } from '../types';
+import { useFuel } from '../context/FuelContext';
+import { FUEL_LABELS, FUEL_ORDER, FUEL_SHORT } from '../types';
 import type { NetworkPrices } from '../types';
 import { arrow, changeColor, fmtDate, fmtDateShort, fmtPct, fmtPrice, fmtSigned } from '../lib/format';
 import { averageOver, changeOver, networkSeries } from '../lib/stats';
@@ -67,8 +68,12 @@ export default function NetworkPage() {
 
 function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
   const { latest, history } = useAppData();
+  const { fuel } = useFuel();
 
-  const series = useMemo(() => networkSeries(history.days, name, 'dp'), [history.days, name]);
+  const series = useMemo(
+    () => networkSeries(history.days, name, fuel),
+    [history.days, name, fuel]
+  );
 
   const stats = useMemo(() => {
     const highest = series.reduce<SeriesPoint | null>(
@@ -88,21 +93,23 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
     };
   }, [series]);
 
+  const netPrice = net[fuel];
+  const countryAvg = latest.avg?.[fuel];
   const vsCountry =
-    net.dp !== undefined && latest.avg?.dp !== undefined ? net.dp - latest.avg.dp : null;
+    netPrice !== undefined && countryAvg !== undefined ? netPrice - countryAvg : null;
 
   const fuels = FUEL_ORDER.filter(f => net[f] !== undefined);
 
   const regionRows = useMemo(() => {
-    const netMedian = net.dp;
+    const netMedian = net[fuel];
     return Object.entries(latest.regions ?? {})
       .flatMap(([region, regionNets]) => {
-        const price = regionNets[name]?.dp;
+        const price = regionNets[name]?.[fuel];
         if (price === undefined) return [];
         return [{ region, price, diff: netMedian !== undefined ? price - netMedian : null }];
       })
       .sort((a, b) => a.price - b.price);
-  }, [latest.regions, name, net.dp]);
+  }, [latest.regions, name, net, fuel]);
 
   const option = useMemo<EChartsCoreOption>(
     () => ({
@@ -114,7 +121,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
           const arr = params as Array<{ data: [string, number] }>;
           if (!arr.length) return '';
           const [date, value] = arr[0].data;
-          return `${fmtDate(date)}<br/>ДП: ${fmtPrice(value)} грн/л`;
+          return `${fmtDate(date)}<br/>${FUEL_SHORT[fuel]}: ${fmtPrice(value)} грн/л`;
         },
       },
       xAxis: {
@@ -139,7 +146,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
       dataZoom: [{ type: 'inside', throttle: 50 }],
       series: [
         {
-          name: 'ДП',
+          name: FUEL_SHORT[fuel],
           type: 'line',
           showSymbol: series.length < 40,
           symbolSize: 5,
@@ -151,7 +158,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
         },
       ],
     }),
-    [series]
+    [series, fuel]
   );
 
   return (
@@ -189,14 +196,14 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
         </div>
       )}
 
-      {/* Графік історії ДП */}
+      {/* Графік історії вибраного пального */}
       <motion.div
         className="card p-3"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       >
-        <div className="lbl mb-2">Історія ціни ДП</div>
+        <div className="lbl mb-2">Історія ціни {FUEL_SHORT[fuel]}</div>
         {series.length < 2 ? (
           <div className="text-xs text-muted py-8 text-center">
             Історія цієї мережі накопичується — графік з'явиться за кілька днів
@@ -208,7 +215,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
 
       {/* Статистика */}
       <div>
-        <div className="lbl mb-2">Статистика (ДП)</div>
+        <div className="lbl mb-2">Статистика ({FUEL_SHORT[fuel]})</div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
           <StatCard
             label="Найвища ціна"
@@ -272,7 +279,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
       >
-        <div className="lbl mb-2">Ціна ДП по областях</div>
+        <div className="lbl mb-2">Ціна {FUEL_SHORT[fuel]} по областях</div>
         {regionRows.length === 0 ? (
           <div className="text-xs text-muted">Дані по областях відсутні</div>
         ) : (
@@ -281,7 +288,9 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
               <thead>
                 <tr className="border-b border-line">
                   <th className="lbl text-left py-1.5 px-2 font-normal">Область</th>
-                  <th className="lbl text-right py-1.5 px-2 font-normal">ДП, грн/л</th>
+                  <th className="lbl text-right py-1.5 px-2 font-normal">
+                    {FUEL_SHORT[fuel]}, грн/л
+                  </th>
                   <th className="lbl text-right py-1.5 px-2 font-normal">vs медіана мережі</th>
                 </tr>
               </thead>

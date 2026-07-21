@@ -1,11 +1,12 @@
-// Порівняльна таблиця мереж АЗС (дизель): пошук, фільтр області й ціни, сортування
+// Порівняльна таблиця мереж АЗС (вибране пальне): пошук, фільтр області й ціни, сортування
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
 import { changeOver, networkSeries } from '../lib/stats';
 import { changeColor, fmtPrice, fmtSigned } from '../lib/format';
-import type { NetworkPrices } from '../types';
+import { FUEL_SHORT, type NetworkPrices } from '../types';
 
 type SortKey = 'name' | 'price' | 'd1' | 'd7' | 'd30' | 'vs';
 type SortDir = 'asc' | 'desc';
@@ -20,14 +21,17 @@ interface Row {
   regionCount?: number;
 }
 
-const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
-  { key: 'name', label: 'Мережа', align: 'left' },
-  { key: 'price', label: 'Ціна ДП', align: 'right' },
-  { key: 'd1', label: 'Вчора', align: 'right' },
-  { key: 'd7', label: 'Тиждень', align: 'right' },
-  { key: 'd30', label: 'Місяць', align: 'right' },
-  { key: 'vs', label: 'vs середня', align: 'right' },
-];
+/** Колонки таблиці; заголовок цінової — під вибране пальне */
+function buildColumns(fuelShort: string): { key: SortKey; label: string; align: 'left' | 'right' }[] {
+  return [
+    { key: 'name', label: 'Мережа', align: 'left' },
+    { key: 'price', label: `Ціна ${fuelShort}`, align: 'right' },
+    { key: 'd1', label: 'Вчора', align: 'right' },
+    { key: 'd7', label: 'Тиждень', align: 'right' },
+    { key: 'd30', label: 'Місяць', align: 'right' },
+    { key: 'vs', label: 'vs середня', align: 'right' },
+  ];
+}
 
 const INPUT_CLS =
   'bg-transparent border border-line rounded px-2 py-1 text-xs focus:border-accent outline-none';
@@ -40,6 +44,9 @@ function parseNum(s: string): number | null {
 
 export default function NetworksTable() {
   const { latest, history } = useAppData();
+  const { fuel } = useFuel();
+  const fuelShort = FUEL_SHORT[fuel];
+  const columns = useMemo(() => buildColumns(fuelShort), [fuelShort]);
 
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState(''); // '' = вся Україна
@@ -65,24 +72,24 @@ export default function NetworksTable() {
     const source: Record<string, NetworkPrices> = region
       ? (latest.regions?.[region] ?? {})
       : (latest.networks ?? {});
-    const avgDp = latest.avg?.dp;
+    const avgPrice = latest.avg?.[fuel];
     const rows: Row[] = [];
     for (const [name, prices] of Object.entries(source)) {
-      const dp = prices.dp;
-      if (dp === undefined) continue; // мережі без ціни ДП не показуємо
-      const series = networkSeries(history.days, name, 'dp');
+      const price = prices[fuel];
+      if (price === undefined) continue; // мережі без ціни вибраного пального не показуємо
+      const series = networkSeries(history.days, name, fuel);
       rows.push({
         name,
-        price: dp,
+        price,
         d1: changeOver(series, 1)?.abs ?? null,
         d7: changeOver(series, 7)?.abs ?? null,
         d30: changeOver(series, 30)?.abs ?? null,
-        vs: avgDp !== undefined ? dp - avgDp : null,
+        vs: avgPrice !== undefined ? price - avgPrice : null,
         regionCount: region ? undefined : prices.regionCount,
       });
     }
     return rows;
-  }, [latest, history, region]);
+  }, [latest, history, region, fuel]);
 
   // Пошук + фільтр ціни + сортування
   const rows = useMemo(() => {
@@ -142,7 +149,7 @@ export default function NetworksTable() {
     >
       {/* Хедер: підпис + пошук + фільтри */}
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <div className="lbl mr-auto">Мережі АЗС — Дизель</div>
+        <div className="lbl mr-auto">Мережі АЗС — {fuelShort}</div>
 
         <input
           type="text"
@@ -177,7 +184,7 @@ export default function NetworksTable() {
             value={minStr}
             onChange={e => setMinStr(e.target.value)}
             placeholder="від"
-            aria-label="Ціна ДП від, грн"
+            aria-label={`Ціна ${fuelShort} від, грн`}
             className={`${INPUT_CLS} w-16`}
           />
           <span className="text-muted text-[10px]">–</span>
@@ -189,7 +196,7 @@ export default function NetworksTable() {
             value={maxStr}
             onChange={e => setMaxStr(e.target.value)}
             placeholder="до"
-            aria-label="Ціна ДП до, грн"
+            aria-label={`Ціна ${fuelShort} до, грн`}
             className={`${INPUT_CLS} w-16`}
           />
           <span className="lbl">грн</span>
@@ -218,7 +225,7 @@ export default function NetworksTable() {
         <table className="w-full min-w-[560px] text-xs border-collapse">
           <thead>
             <tr className="border-b border-line">
-              {COLUMNS.map(col => (
+              {columns.map(col => (
                 <th
                   key={col.key}
                   onClick={() => onSort(col.key)}
@@ -287,7 +294,7 @@ export default function NetworksTable() {
             </AnimatePresence>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length} className="py-3 px-2 text-center text-muted text-[11px]">
+                <td colSpan={columns.length} className="py-3 px-2 text-center text-muted text-[11px]">
                   {allRows.length === 0
                     ? 'Немає даних про мережі'
                     : 'Нічого не знайдено за заданими фільтрами'}

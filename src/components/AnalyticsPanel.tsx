@@ -1,9 +1,11 @@
-// AnalyticsPanel — «Аналітика»: сітка міні-статів по ДП (середня, медіана, екстремуми, волатильність)
+// AnalyticsPanel — «Аналітика»: сітка міні-статів по вибраному пальному (середня, медіана, екстремуми, волатильність)
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
 import { fmtDateShort, fmtPct, fmtPrice, fmtSigned } from '../lib/format';
 import { analytics } from '../lib/stats';
+import { FUEL_SHORT } from '../types';
 
 interface StatProps {
   label: string;
@@ -32,8 +34,9 @@ function Stat({ label, value, color, unit, sub, subColor = 'text-muted', title }
 
 export default function AnalyticsPanel() {
   const { latest, history } = useAppData();
+  const { fuel } = useFuel();
 
-  const a = useMemo(() => analytics(latest, history, 'dp'), [latest, history]);
+  const a = useMemo(() => analytics(latest, history, fuel), [latest, history, fuel]);
 
   return (
     <motion.div
@@ -44,7 +47,7 @@ export default function AnalyticsPanel() {
     >
       <div className="flex items-baseline justify-between gap-2 mb-2">
         <div className="lbl">Аналітика</div>
-        <div className="text-[8px] text-muted whitespace-nowrap">дизель (ДП)</div>
+        <div className="text-[8px] text-muted whitespace-nowrap">{FUEL_SHORT[fuel]}</div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">

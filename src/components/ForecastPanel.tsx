@@ -2,9 +2,11 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
+import { useFuel } from '../context/FuelContext';
 import { forecast, type Confidence, type Direction, type HorizonForecast } from '../lib/forecast';
 import { avgSeries } from '../lib/stats';
 import { fmtPrice } from '../lib/format';
+import { FUEL_SHORT } from '../types';
 
 const DIRECTION_VIEW: Record<Direction, { text: string; cls: string }> = {
   up: { text: '↗ ЗРОСТАННЯ', cls: 'text-danger' },
@@ -35,7 +37,8 @@ function HorizonRow({ label, h }: { label: string; h: HorizonForecast }) {
 
 export default function ForecastPanel() {
   const { history } = useAppData();
-  const fc = useMemo(() => forecast(avgSeries(history.days, 'dp')), [history]);
+  const { fuel } = useFuel();
+  const fc = useMemo(() => forecast(avgSeries(history.days, fuel)), [history, fuel]);
 
   return (
     <motion.div
@@ -44,7 +47,7 @@ export default function ForecastPanel() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
-      <div className="lbl mb-2">Прогноз тренду</div>
+      <div className="lbl mb-2">Прогноз тренду — {FUEL_SHORT[fuel]}</div>
 
       {!fc && (
         <div className="text-xs text-muted flex-1">Замало історичних даних для прогнозу</div>
