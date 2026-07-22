@@ -1,7 +1,11 @@
-// Завантаження всіх даних один раз і роздача по дереву компонентів
+// Завантаження даних і роздача по дереву компонентів.
+// Дані автоматично оновлюються кожні 15 хв та при поверненні на вкладку,
+// тому давно відкрита сторінка не «застигає» на старих цінах.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { dataProvider } from '../api/provider';
 import type { Factors, History, Latest, News } from '../types';
+
+const REFRESH_MS = 15 * 60 * 1000;
 
 export interface AppData {
   latest: Latest;
@@ -22,20 +26,38 @@ export function DataProviderComponent({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      dataProvider.latest(),
-      dataProvider.history(),
-      dataProvider.news(),
-      dataProvider.factors(),
-    ])
-      .then(([latest, history, news, factors]) => {
-        if (alive) setState({ data: { latest, history, news, factors }, error: null });
-      })
-      .catch(e => {
-        if (alive) setState({ data: null, error: e instanceof Error ? e.message : String(e) });
-      });
+
+    const load = (initial: boolean) => {
+      Promise.all([
+        dataProvider.latest(),
+        dataProvider.history(),
+        dataProvider.news(),
+        dataProvider.factors(),
+      ])
+        .then(([latest, history, news, factors]) => {
+          if (alive) setState({ data: { latest, history, news, factors }, error: null });
+        })
+        .catch(e => {
+          // помилку показуємо лише якщо даних ще немає; тихий рефреш не ламає сторінку
+          if (alive && initial) {
+            setState({ data: null, error: e instanceof Error ? e.message : String(e) });
+          }
+        });
+    };
+
+    load(true);
+    const timer = setInterval(() => load(false), REFRESH_MS);
+
+    // повернувся на вкладку після паузи — одразу підтягуємо свіже
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       alive = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 
