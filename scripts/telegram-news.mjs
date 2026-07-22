@@ -66,7 +66,7 @@ async function main() {
     const text =
       `🔴 <b>${esc(n.title)}</b>` +
       (summary ? `\n\n${esc(summary)}` : '') +
-      `\n\n<i>${esc(n.source)}</i> · <a href="${esc(n.url)}">джерело</a>` +
+      `\n\n<i>${esc(n.source)}</i>` +
       `\n⛽ <a href="${SITE}">diesel-monitor.pp.ua</a>`;
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

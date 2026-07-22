@@ -63,7 +63,7 @@ async function main() {
   const news = await readJson('news.json');
   const top = (news?.items ?? []).find(n => n.impact !== 'neutral');
   const newsBlock = top
-    ? `\n\n${top.impact === 'up' ? '🔴' : '🟢'} <a href="${esc(top.url)}">${esc(top.title)}</a>`
+    ? `\n\n${top.impact === 'up' ? '🔴' : '🟢'} ${esc(top.title)}`
     : '';
 
   const text =
