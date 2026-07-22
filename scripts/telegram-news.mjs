@@ -10,8 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const SITE = 'https://diesel-monitor.pp.ua';
-const MAX_PER_RUN = 2; // не спамимо: максимум 2 новини за запуск
-const FRESH_HOURS = 12; // лише свіжі новини
+// Ліміти можна перекрити env-змінними (для разового бекфілу архіву)
+const MAX_PER_RUN = Number(process.env.TG_NEWS_MAX) || 2; // максимум новин за запуск
+const FRESH_HOURS = Number(process.env.TG_NEWS_FRESH_HOURS) || 12; // лише свіжі
 const POSTED_CAP = 300;
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -83,7 +84,7 @@ async function main() {
     if (!res.ok) throw new Error(`Telegram API: ${JSON.stringify(res)}`);
     posted.add(n.url);
     console.log(`tg-news: опубліковано «${n.title.slice(0, 60)}»`);
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 3100));
   }
 
   await writeFile(
