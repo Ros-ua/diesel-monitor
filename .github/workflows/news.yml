@@ -28,12 +28,17 @@ jobs:
           node-version: 22
       - name: Збір новин
         run: node scripts/collect.mjs --news-only
+      - name: Пост червоних новин у Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
+        run: node scripts/telegram-news.mjs
       - name: Коміт оновлених новин
         id: commit
         run: |
           git config user.name "diesel-monitor-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add public/data/news.json
+          git add public/data
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Новини без змін"

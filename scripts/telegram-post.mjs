@@ -88,6 +88,19 @@ async function main() {
     path.join(DATA_DIR, 'tg-post.json'),
     JSON.stringify({ lastDate: latest.date, postedAt: new Date().toISOString() })
   );
+
+  // новину з цінового поста вносимо у список запощених,
+  // щоб telegram-news.mjs не продублював її окремим постом
+  if (top?.url) {
+    const postedState = (await readJson('tg-news-posted.json', { urls: [] })) ?? { urls: [] };
+    if (!postedState.urls.includes(top.url)) {
+      postedState.urls.push(top.url);
+      await writeFile(
+        path.join(DATA_DIR, 'tg-news-posted.json'),
+        JSON.stringify({ urls: postedState.urls.slice(-300), updated: new Date().toISOString() })
+      );
+    }
+  }
   console.log(`tg: опубліковано пост за ${latest.date} у ${channel}`);
 }
 
