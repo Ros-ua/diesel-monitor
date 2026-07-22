@@ -29,6 +29,11 @@ jobs:
           node-version: 22
       - name: Збір даних
         run: node scripts/collect.mjs
+      - name: Пост у Telegram-канал
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
+        run: node scripts/telegram-post.mjs
       - name: Коміт оновлених даних
         id: commit
         run: |
