@@ -46,7 +46,11 @@ function Footer() {
         не є фінансовою порадою і не гарантують майбутніх цін.
       </p>
       <p className="mt-1">
-        Зв'язок та пропозиції:{' '}
+        📢 Телеграм-канал:{' '}
+        <a href="https://t.me/diesel_monitor_ua" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
+          @diesel_monitor_ua
+        </a>{' '}
+        — щоденні ціни й новини · Зв'язок:{' '}
         <a href="https://t.me/Ros_Hangzhou" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
           @Ros_Hangzhou
         </a>{' '}
