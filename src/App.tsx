@@ -56,6 +56,11 @@ function Footer() {
         </a>{' '}
         (Telegram) <ViewCounter />
       </p>
+      <p className="mt-1">
+        <a href="/widget/" className="text-accent/70 hover:text-accent">Віджет для сайту</a>
+        {' · '}
+        <a href="/privacy/" className="text-accent/70 hover:text-accent">Політика конфіденційності</a>
+      </p>
     </footer>
   );
 }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Віджет цін на пальне для вашого сайту — Дизель Монітор UA</title>
+<meta name="description" content="Безкоштовний віджет-інформер «Ціни на пальне в Україні» для вашого сайту чи блогу. Один рядок коду, свіжі ціни щодня, без реєстрації.">
+<link rel="canonical" href="https://diesel-monitor.pp.ua/widget/">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#0a0e12">
+<style>
+body{background:#0a0e12;color:#e0ede9;font-family:'Courier New',monospace;margin:0;padding:16px;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto}
+a{color:#00d2aa}
+h1{font-size:20px;color:#00d2aa;text-transform:uppercase;letter-spacing:.05em}
+h2{font-size:14px;color:#00d2aa;margin-top:26px}
+.top{font-size:11px;color:#5a7a72}
+code,pre{font-family:'Courier New',monospace}
+pre{background:#111820;border:1px solid rgba(0,210,170,.15);border-radius:6px;padding:12px 14px;font-size:12px;overflow-x:auto;color:#e0ede9;position:relative}
+.demo{background:#0a0e12;border:1px dashed rgba(0,210,170,.25);border-radius:8px;padding:20px;margin:14px 0;display:flex;justify-content:center}
+.foot{font-size:10px;color:#5a7a72;margin-top:28px;border-top:1px solid rgba(0,210,170,.15);padding-top:12px}
+button{background:transparent;border:1px solid #00d2aa;color:#00d2aa;font-family:inherit;font-size:11px;padding:5px 12px;border-radius:4px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;margin-top:8px}
+button:hover{background:#00d2aa;color:#0a0e12}
+</style>
+</head>
+<body><div class="wrap">
+<div class="top"><a href="/">← Дизель Монітор UA — головна</a></div>
+<h1>Віджет цін на пальне для вашого сайту</h1>
+<p style="font-size:13px;color:#5a7a72">Безкоштовний інформер зі свіжими цінами на дизель, бензин і автогаз. Оновлюється щодня автоматично. Підійде для авто-блогу, форуму, сайту про логістику чи АЗС.</p>
+
+<h2>Як виглядає</h2>
+<div class="demo"><div id="diesel-monitor-widget"></div></div>
+
+<h2>Як встановити</h2>
+<p style="font-size:13px">Вставте цей код у HTML вашої сторінки — там, де має бути віджет:</p>
+<pre id="code">&lt;div id="diesel-monitor-widget"&gt;&lt;/div&gt;
+&lt;script src="https://diesel-monitor.pp.ua/widget.js" async&gt;&lt;/script&gt;</pre>
+<button onclick="navigator.clipboard.writeText(document.getElementById('code').innerText).then(()=>{this.textContent='Скопійовано ✓'})">Скопіювати код</button>
+
+<h2>Умови</h2>
+<p style="font-size:12px;color:#5a7a72">Використання безкоштовне. Єдине прохання — не приховувати посилання на джерело (diesel-monitor.pp.ua) у віджеті. Дані мають довідковий характер.</p>
+
+<div class="foot">© Дизель Монітор UA · <a href="/">diesel-monitor.pp.ua</a> · <a href="/privacy/">Політика конфіденційності</a></div>
+</div>
+<script src="/widget.js" async></script>
+</body></html>

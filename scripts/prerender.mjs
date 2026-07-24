@@ -233,6 +233,9 @@ async function main() {
   idx = idx.replace('<div id="root"></div>', `<div id="root">${seoHome}</div>`);
   await writeFile(idxPath, idx);
 
+  // статичні сторінки
+  urls.push(`${SITE}/widget/`, `${SITE}/privacy/`);
+
   // ── Повний sitemap ──
   const today = new Date().toISOString().slice(0, 10);
   const sitemap =
