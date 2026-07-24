@@ -8,6 +8,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { makeCard } from './price-card.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const SITE = 'https://diesel-monitor.pp.ua';
@@ -42,7 +43,7 @@ async function main() {
   }
 
   const state = await readJson('tg-post.json', {});
-  if (state.lastDate === latest.date) {
+  if (state.lastDate === latest.date && process.env.TG_FORCE !== '1') {
     console.log(`tg: за ${latest.date} вже постили — пропускаю`);
     return;
   }
@@ -71,16 +72,39 @@ async function main() {
     `${rows}${newsBlock}\n\n` +
     `📊 Графіки, мережі АЗС, області, прогноз:\n${SITE}`;
 
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: channel,
-      text,
-      parse_mode: 'HTML',
-      link_preview_options: { url: SITE, prefer_small_media: true },
-    }),
-  }).then(r => r.json());
+  // спарклайн дизеля за 30 днів для картки
+  const hist = await readJson('history.json', { days: [] });
+  const spark = (hist.days ?? [])
+    .filter(x => x.avg?.dp !== undefined)
+    .slice(-30)
+    .map(x => ({ value: x.avg.dp }));
+
+  // пост = картка з цінами + підпис (той самий текст). Якщо картка не згенерувалась — текстом.
+  let res;
+  try {
+    const png = await makeCard(latest, spark);
+    const form = new FormData();
+    form.append('chat_id', channel);
+    form.append('caption', text);
+    form.append('parse_mode', 'HTML');
+    form.append('photo', new Blob([png], { type: 'image/png' }), 'prices.png');
+    res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: form,
+    }).then(r => r.json());
+  } catch (e) {
+    console.log(`tg: картка не згенерувалась (${e.message}) — шлю текстом`);
+    res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: channel,
+        text,
+        parse_mode: 'HTML',
+        link_preview_options: { url: SITE, prefer_small_media: true },
+      }),
+    }).then(r => r.json());
+  }
 
   if (!res.ok) throw new Error(`Telegram API: ${JSON.stringify(res)}`);
 
