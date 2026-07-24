@@ -198,6 +198,41 @@ async function main() {
     urls.push(`${SITE}/network/${slug}/`);
   }
 
+  // ── SEO-контент головної: вставляємо в #root справжній HTML (H1, ціни, лінки).
+  // React при монтуванні його замінить, але Googlebot і користувач бачать одразу —
+  // головна перестає бути порожнім div для пошуковика. ──
+  const avg = latest.avg ?? {};
+  const dpMin = Math.min(
+    ...Object.values(networks)
+      .map(n => n.dp)
+      .filter(v => v !== undefined)
+  );
+  const avgRows = FUELS.filter(([k]) => avg[k] !== undefined)
+    .map(([k, n]) => `<tr><td>${n}</td><td><b>${fmt(avg[k])}</b> грн/л</td></tr>`)
+    .join('');
+  const regionLinks = regionEntries
+    .map(r => `<a href="${SITE}/region/${slugify(r)}/">${esc(r)}</a>`)
+    .join(' · ');
+  const netLinks = netEntries
+    .map(n => `<a href="${SITE}/network/${slugify(n)}/">${esc(n)}</a>`)
+    .join(' · ');
+
+  const seoHome =
+    `<div style="max-width:860px;margin:0 auto;padding:16px;font-family:'Courier New',monospace;color:#e0ede9">` +
+    `<h1 style="font-size:20px;color:#00d2aa;text-transform:uppercase;letter-spacing:.05em">Ціни на пальне в Україні сьогодні — дизель, бензин, автогаз</h1>` +
+    `<p style="font-size:13px;color:#5a7a72">Середні ціни на АЗС України станом на ${date}${Number.isFinite(dpMin) ? `. Дизель — від ${fmt(dpMin)} грн/л` : ''}. Оновлюється щодня: дизель (ДП), А-95 преміум, А-95, А-92, автогаз. Порівняння ${Object.keys(networks).length} мереж АЗС по ${Object.keys(regions).length} областях, історія, аналітика, прогноз і новини ринку.</p>` +
+    `<table style="font-size:14px;border-collapse:collapse">${avgRows}</table>` +
+    `<h2 style="font-size:14px;color:#00d2aa;margin-top:16px">Ціни на пальне по областях України</h2>` +
+    `<p style="font-size:12px;line-height:1.9">${regionLinks}</p>` +
+    `<h2 style="font-size:14px;color:#00d2aa;margin-top:12px">Ціни по мережах АЗС</h2>` +
+    `<p style="font-size:12px;line-height:1.9">${netLinks}</p>` +
+    `</div>`;
+
+  const idxPath = path.join(DIST, 'index.html');
+  let idx = await readFile(idxPath, 'utf-8');
+  idx = idx.replace('<div id="root"></div>', `<div id="root">${seoHome}</div>`);
+  await writeFile(idxPath, idx);
+
   // ── Повний sitemap ──
   const today = new Date().toISOString().slice(0, 10);
   const sitemap =
