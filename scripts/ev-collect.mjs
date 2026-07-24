@@ -54,6 +54,8 @@ const EXCLUDE = [
   { name: 'Крим', latMin: 44.0, latMax: 46.25, lonMin: 32.4, lonMax: 36.65 },
   { name: 'Донеччина', latMin: 46.85, latMax: 49.1, lonMin: 36.55, lonMax: 38.95 },
   { name: 'Луганщина', latMin: 48.0, latMax: 49.95, lonMin: 38.1, lonMax: 40.25 },
+  // окуповане Приазовʼя (Бердянськ, Мелітополь, Енергодар) — без вільних Запоріжжя/Херсона
+  { name: 'Приазовʼя', latMin: 46.3, latMax: 47.6, lonMin: 34.5, lonMax: 37.2 },
 ];
 const isOccupied = (lat, lon) =>
   EXCLUDE.some(z => lat >= z.latMin && lat <= z.latMax && lon >= z.lonMin && lon <= z.lonMax);

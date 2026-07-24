@@ -11,24 +11,24 @@ const EvPage = lazy(() => import('./pages/EvPage'));
 
 function Header({ updatedAt }: { updatedAt: string | null }) {
   return (
-    <header className="flex items-center gap-3.5 border-b border-line pb-2.5 shrink-0">
-      <Link to="/" className="flex items-center gap-2 no-underline">
+    <header className="flex items-center gap-2 border-b border-line pb-2.5 shrink-0">
+      <Link to="/" className="flex items-center gap-2 no-underline flex-1 min-w-0">
         <span
-          className="inline-block size-[7px] rounded-full bg-accent"
+          className="inline-block size-[7px] rounded-full bg-accent shrink-0"
           style={{ animation: 'pulse 1.5s infinite' }}
         />
-        <h1 className="text-xs text-accent tracking-[0.2em] uppercase font-normal">
+        <h1 className="text-xs text-accent tracking-[0.2em] uppercase font-normal truncate">
           Дизель Монітор <span className="text-muted">UA</span>
         </h1>
       </Link>
       <Link
         to="/ev"
-        className="btn btn-ghost px-2! py-1! text-[10px]! ml-auto no-underline"
+        className="btn btn-ghost px-2! py-1! text-[10px]! no-underline shrink-0"
         title="Карта зарядних станцій для електромобілів по Україні"
       >
         ⚡ Де зарядити авто
       </Link>
-      <span className="text-[10px] text-muted/70 hidden sm:inline">
+      <span className="text-[10px] text-muted/70 hidden sm:block flex-1 text-right">
         {updatedAt ? `ціни: ${timeAgo(updatedAt)}` : 'завантаження…'}
       </span>
     </header>
