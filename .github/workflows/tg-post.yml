@@ -1,0 +1,41 @@
+name: Пост новин у Telegram (кожні 30 хв)
+
+on:
+  schedule:
+    # кожні 30 хв — постить максимум 1 новину за прогін (без спаму, але й не копить чергу)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# спільна група з рештою — щоб git push не конфліктували
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Пост однієї новини у канал (за трендом цін)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
+        run: node scripts/telegram-news.mjs
+      - name: Коміт стану постів
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/data/tg-news-posted.json
+          if git diff --cached --quiet; then
+            echo "Нічого не постили"
+          else
+            git commit -m "data: стан tg-постів $(date -u +%Y-%m-%d_%H:%M)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi

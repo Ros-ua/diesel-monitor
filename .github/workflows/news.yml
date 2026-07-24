@@ -28,11 +28,7 @@ jobs:
           node-version: 22
       - name: Збір новин
         run: node scripts/collect.mjs --news-only
-      - name: Пост червоних новин у Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
-        run: node scripts/telegram-news.mjs
+      # Постинг у канал винесено в окремий tg-post.yml (кожні 30 хв, по 1 новині)
       - name: Коміт оновлених новин
         id: commit
         run: |
