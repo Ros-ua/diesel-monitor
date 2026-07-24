@@ -1,0 +1,27 @@
+{
+  "name": "Дизель Монітор UA",
+  "short_name": "Дизель Монітор",
+  "description": "Ціни на пальне в Україні",
+  "lang": "uk",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e12",
+  "theme_color": "#0a0e12",
+  "icons": [
+    {
+      "src": "/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
