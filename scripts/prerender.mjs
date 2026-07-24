@@ -44,7 +44,7 @@ const uaDate = iso => {
   return `${d}.${m}.${y}`;
 };
 
-function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHtml }) {
+function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHtml, ctaText = 'Інтерактивний дашборд →' }) {
   return `<!doctype html>
 <html lang="uk">
 <head>
@@ -89,7 +89,7 @@ td{padding:6px 8px;text-align:right;border-bottom:1px solid rgba(0,210,170,.07)}
 <h1>${esc(h1)}</h1>
 <div class="sub">${esc(sub)}</div>
 ${bodyHtml}
-<a class="cta" href="${spaLink}">Інтерактивний дашборд →</a>
+<a class="cta" href="${spaLink}">${ctaText}</a>
 <div class="card nav">${navHtml}</div>
 <div class="foot">Джерело цін: Мінфін (Консалтингова група А-95). Ціни довідкові; актуальні — на АЗС.<br>
 © Дизель Монітор UA · <a href="${SITE}/">${SITE.replace('https://', '')}</a></div>
@@ -232,6 +232,55 @@ async function main() {
   let idx = await readFile(idxPath, 'utf-8');
   idx = idx.replace('<div id="root"></div>', `<div id="root">${seoHome}</div>`);
   await writeFile(idxPath, idx);
+
+  // ── SEO-сторінка зарядок EV /ev/ (карта — інтерактивна на /#/ev, ця — для Google) ──
+  try {
+    const ev = JSON.parse(await readFile(path.join(ROOT, 'public', 'data', 'ev-stations.json'), 'utf-8'));
+    const evStations = ev.stations || [];
+    const byNet = {};
+    for (const s of evStations) if (s.net) byNet[s.net] = (byNet[s.net] || 0) + 1;
+    const CITIES = [
+      ['Київ', 50.2, 50.6, 30.2, 30.9], ['Харків', 49.9, 50.1, 36.1, 36.4],
+      ['Львів', 49.75, 49.95, 23.9, 24.15], ['Одеса', 46.3, 46.65, 30.6, 30.9],
+      ['Дніпро', 48.3, 48.6, 34.9, 35.2], ['Запоріжжя', 47.75, 47.95, 35.0, 35.3],
+      ['Вінниця', 49.18, 49.28, 28.4, 28.55], ['Полтава', 49.52, 49.63, 34.5, 34.62],
+      ['Івано-Франківськ', 48.88, 48.96, 24.66, 24.76], ['Ужгород', 48.6, 48.65, 22.25, 22.35],
+    ];
+    const cityCounts = CITIES.map(([n, laMin, laMax, loMin, loMax]) => [
+      n,
+      evStations.filter(s => s.lat >= laMin && s.lat <= laMax && s.lon >= loMin && s.lon <= loMax).length,
+    ]).filter(c => c[1] > 0).sort((a, b) => b[1] - a[1]);
+    const EV_LINKS = {
+      Toka: 'https://toka.energy', Ecofactor: 'https://ecofactortech.com',
+      YASNO: 'https://yasno.com.ua/mobile-app', GoToU: 'https://goto-u.com',
+      UGV: 'https://ugv.ua', EVA: 'https://www.evachargers.com/uk', WOG: 'https://wog.ua',
+      Ionity: 'https://ionity.ua', OKKO: 'https://www.okko.ua/electric-chargers', Faster: 'https://faster.in.ua',
+    };
+    const netRows = Object.entries(byNet).sort((a, b) => b[1] - a[1])
+      .map(([n, c]) => `<tr><td>${esc(n)}</td><td>${c}</td><td>${EV_LINKS[n] ? `<a href="${EV_LINKS[n]}" target="_blank" rel="noopener">сайт ↗</a>` : '—'}</td></tr>`)
+      .join('');
+    const cityText = cityCounts.map(([n, c]) => `${esc(n)} — ${c}`).join(', ');
+    const evHtml = page({
+      title: `Зарядки для електромобілів в Україні: карта ${evStations.length} станцій`,
+      description: `Карта зарядних станцій для електромобілів по Україні: ${evStations.length} точок${cityText ? `. ${cityText}` : ''}. Мережі Toka, Ecofactor, YASNO, IONITY, GO TO-U та інші — сайти й застосунки.`,
+      canonical: `${SITE}/ev/`,
+      h1: 'Зарядки для електромобілів в Україні',
+      sub: `${evStations.length} зарядних станцій · дані OpenStreetMap`,
+      bodyHtml:
+        `<div class="card"><p style="font-size:13px;color:#c5d6d0">Карта зарядних станцій для електромобілів по всій Україні — ${evStations.length} точок. Дані з OpenStreetMap, оновлюються щотижня. Ціни на зарядку динамічні; актуальний тариф і запуск зарядки — у застосунку відповідної мережі.</p>` +
+        (cityText ? `<p style="font-size:12px;color:#5a7a72">Найбільше зарядок: ${cityText}.</p>` : '') + `</div>` +
+        `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">МЕРЕЖІ ЗАРЯДОК УКРАЇНИ</div><table><tr><th>Мережа</th><th>Станцій</th><th></th></tr>${netRows}</table></div>`,
+      spaLink: `${SITE}/#/ev`,
+      ctaText: 'Відкрити інтерактивну карту →',
+      navHtml: '<b style="font-size:9px;letter-spacing:.12em;color:#5a7a72">РОЗДІЛИ</b><br><a href="' + SITE + '/">Ціни на пальне</a> · <a href="' + SITE + '/#/ev">Інтерактивна карта зарядок</a>',
+    });
+    await mkdir(path.join(DIST, 'ev'), { recursive: true });
+    await writeFile(path.join(DIST, 'ev', 'index.html'), evHtml);
+    urls.push(`${SITE}/ev/`);
+    console.log(`ev SEO: /ev/ (${evStations.length} станцій, ${cityCounts.length} міст)`);
+  } catch (e) {
+    console.log('ev SEO пропущено:', e.message);
+  }
 
   // статичні сторінки
   urls.push(`${SITE}/widget/`, `${SITE}/privacy/`);

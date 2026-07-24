@@ -55,7 +55,7 @@ export default function EvPage() {
   const [stations, setStations] = useState<Station[]>([]);
   const [updated, setUpdated] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null); // обрана мережа або null=усі
-  const [hideUnknown, setHideUnknown] = useState(false); // сховати станції без відомої мережі
+  const [hideUnknown, setHideUnknown] = useState(true); // типово — лише станції з відомою мережею
 
   // завантаження станцій
   useEffect(() => {
@@ -155,25 +155,24 @@ export default function EvPage() {
           type="button"
           onClick={() => {
             setFilter(null);
+            setHideUnknown(true);
+          }}
+          className={`${hideUnknown && filter === null ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
+          title="Лише станції з відомою мережею"
+        >
+          Відомі мережі ({stations.length - unknownCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setFilter(null);
             setHideUnknown(false);
           }}
           className={`${filter === null && !hideUnknown ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
+          title="Усі станції, зокрема без вказаної мережі"
         >
           Усі ({stations.length})
         </button>
-        {unknownCount > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setFilter(null);
-              setHideUnknown(v => !v);
-            }}
-            className={`${hideUnknown && filter === null ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
-            title="Показати лише станції з відомою мережею"
-          >
-            Лише відомі
-          </button>
-        )}
         {netCounts.map(([net, n]) => (
           <button
             key={net}

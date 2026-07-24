@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const SITE = 'https://diesel-monitor.pp.ua';
 // Ліміти можна перекрити env-змінними (для разового бекфілу архіву)
-const MAX_PER_RUN = Number(process.env.TG_NEWS_MAX) || 2; // максимум новин за запуск
+const MAX_PER_RUN = Number(process.env.TG_NEWS_MAX) || 1; // 1 новина за запуск (не спамимо)
 const FRESH_HOURS = Number(process.env.TG_NEWS_FRESH_HOURS) || 12; // лише свіжі
 const POSTED_CAP = 300;
 
