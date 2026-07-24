@@ -1,6 +1,9 @@
-// Пости «червоних» новин у Telegram-канал (запускається з news.yml кожні 2 години).
-// Постить лише важливі новини з тиском на ціну вгору (impact=up): сам текст новини
-// (заголовок + короткий зміст із RSS), джерело і посилання на сайт.
+// Пости новин у Telegram-канал (запускається з news.yml кожні 2 години).
+// Канал = «дзеркало ринку»: постить новини В ТОЙ БІК, куди йде тренд цін на дизель.
+//   тренд угору  → 🔴 новини подорожчання (impact=up)
+//   тренд униз   → 🟢 новини здешевлення (impact=down)
+//   бічний тренд → обидві сторони
+// (На САЙТІ показуються всі новини — фільтр за трендом лише для каналу.)
 // Стан — public/data/tg-news-posted.json (список URL, комітиться разом з новинами).
 //   env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL
 
@@ -28,6 +31,35 @@ async function readJson(file, fallback = null) {
   }
 }
 
+// Напрям тренду середньої ціни дизеля за ~14 днів.
+// Повертає які impact-и постити в канал: ['up'] / ['down'] / ['up','down'].
+const TREND_DAYS = 14;
+const TREND_PCT = 1; // поріг «бічного» тренду, %
+
+function allowedImpacts(history) {
+  const days = (history?.days ?? []).filter(d => d.avg?.dp !== undefined);
+  if (days.length < 2) return { allowed: ['up', 'down'], dir: 'flat', pct: null };
+  const last = days[days.length - 1];
+  const targetTime = new Date(last.date).getTime() - TREND_DAYS * 86_400_000;
+  // найближча точка до дати «14 днів тому» (історія розріджена)
+  let base = null,
+    best = Infinity;
+  for (let i = days.length - 2; i >= 0; i--) {
+    const dist = Math.abs(new Date(days[i].date).getTime() - targetTime);
+    if (dist < best) {
+      best = dist;
+      base = days[i];
+    }
+    if (new Date(days[i].date).getTime() < targetTime) break;
+  }
+  // база має бути не далі 25 днів від цілі, інакше тренд ненадійний → бічний
+  if (!base || best > 25 * 86_400_000) return { allowed: ['up', 'down'], dir: 'flat', pct: null };
+  const pct = ((last.avg.dp - base.avg.dp) / base.avg.dp) * 100;
+  if (pct >= TREND_PCT) return { allowed: ['up'], dir: 'up', pct };
+  if (pct <= -TREND_PCT) return { allowed: ['down'], dir: 'down', pct };
+  return { allowed: ['up', 'down'], dir: 'flat', pct };
+}
+
 async function main() {
   if (!token || !channel) {
     console.log('tg-news: TELEGRAM_BOT_TOKEN або TELEGRAM_CHANNEL не задані — пропускаю');
@@ -35,14 +67,21 @@ async function main() {
   }
 
   const news = await readJson('news.json');
+  const history = await readJson('history.json', { days: [] });
   const state = await readJson('tg-news-posted.json', { urls: [] });
   const posted = new Set(state.urls);
   const freshAfter = Date.now() - FRESH_HOURS * 3_600_000;
 
+  // напрям каналу за трендом цін на дизель
+  const { allowed, dir, pct } = allowedImpacts(history);
+  console.log(
+    `tg-news: тренд дизеля ${dir}${pct !== null ? ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}% за ~${TREND_DAYS}д)` : ''} → постимо: ${allowed.join(', ')}`
+  );
+
   const candidates = (news?.items ?? [])
     .filter(
       n =>
-        n.impact === 'up' &&
+        allowed.includes(n.impact) &&
         n.url &&
         !posted.has(n.url) &&
         n.publishedAt &&
@@ -53,7 +92,7 @@ async function main() {
     .slice(0, MAX_PER_RUN);
 
   if (!candidates.length) {
-    console.log('tg-news: свіжих червоних новин немає');
+    console.log('tg-news: свіжих новин у напрямі тренду немає');
     return;
   }
 
@@ -64,8 +103,10 @@ async function main() {
     // не дублюємо заголовок, якщо зміст із нього починається
     if (summary && n.title && summary.startsWith(n.title.slice(0, 40))) summary = '';
 
+    // 🔴 подорожчання / 🟢 здешевлення — за impact самої новини
+    const icon = n.impact === 'down' ? '🟢' : '🔴';
     const text =
-      `🔴 <b>${esc(n.title)}</b>` +
+      `${icon} <b>${esc(n.title)}</b>` +
       (summary ? `\n\n${esc(summary)}` : '') +
       `\n\n<i>${esc(n.source)}</i>` +
       `\n⛽ <a href="${SITE}">diesel-monitor.pp.ua</a>`;
