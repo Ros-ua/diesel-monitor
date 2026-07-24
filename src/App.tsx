@@ -7,6 +7,7 @@ import ViewCounter from './components/ViewCounter';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const NetworkPage = lazy(() => import('./pages/NetworkPage'));
 const RegionPage = lazy(() => import('./pages/RegionPage'));
+const EvPage = lazy(() => import('./pages/EvPage'));
 
 function Header({ updatedAt }: { updatedAt: string | null }) {
   return (
@@ -20,8 +21,15 @@ function Header({ updatedAt }: { updatedAt: string | null }) {
           Дизель Монітор <span className="text-muted">UA</span>
         </h1>
       </Link>
-      <span className="text-[11px] text-muted ml-auto">
-        {updatedAt ? `оновлено ${timeAgo(updatedAt)}` : 'завантаження…'}
+      <Link
+        to="/ev"
+        className="btn btn-ghost px-2! py-1! text-[10px]! ml-auto no-underline"
+        title="Карта зарядних станцій для електромобілів по Україні"
+      >
+        ⚡ Де зарядити авто
+      </Link>
+      <span className="text-[10px] text-muted/70 hidden sm:inline">
+        {updatedAt ? `ціни: ${timeAgo(updatedAt)}` : 'завантаження…'}
       </span>
     </header>
   );
@@ -97,6 +105,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/network/:id" element={<NetworkPage />} />
               <Route path="/region/:id" element={<RegionPage />} />
+              <Route path="/ev" element={<EvPage />} />
               <Route path="*" element={<div className="text-muted text-xs mt-8">Сторінку не знайдено. <Link to="/" className="text-accent">На головну</Link></div>} />
             </Routes>
           </Suspense>

@@ -1,0 +1,73 @@
+name: Зарядки EV (щотижня)
+
+on:
+  schedule:
+    # щопонеділка о 03:20 UTC — локації змінюються повільно
+    - cron: '20 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  ev:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Збір зарядних станцій (OpenStreetMap)
+        run: node scripts/ev-collect.mjs
+      - name: Коміт оновлених станцій
+        id: commit
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/data/ev-stations.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Станції без змін"
+          else
+            git commit -m "data: автооновлення зарядних станцій $(date -u +%Y-%m-%d)"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: ev
+    if: needs.ev.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: git pull --ff-only
+      - run: npm ci
+      - name: Свіжа SEO-мета
+        run: node scripts/seo.mjs
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
