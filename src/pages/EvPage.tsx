@@ -55,6 +55,7 @@ export default function EvPage() {
   const [stations, setStations] = useState<Station[]>([]);
   const [updated, setUpdated] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null); // обрана мережа або null=усі
+  const [hideUnknown, setHideUnknown] = useState(false); // сховати станції без відомої мережі
 
   // завантаження станцій
   useEffect(() => {
@@ -83,10 +84,12 @@ export default function EvPage() {
     };
   }, []);
 
-  const shown = useMemo(
-    () => (filter ? stations.filter(s => s.net === filter) : stations),
-    [stations, filter]
-  );
+  const shown = useMemo(() => {
+    if (filter) return stations.filter(s => s.net === filter);
+    return hideUnknown ? stations.filter(s => s.net) : stations;
+  }, [stations, filter, hideUnknown]);
+
+  const unknownCount = useMemo(() => stations.filter(s => !s.net).length, [stations]);
 
   // перемальовування маркерів при зміні даних/фільтра
   useEffect(() => {
@@ -150,11 +153,27 @@ export default function EvPage() {
       <div className="flex flex-wrap gap-1">
         <button
           type="button"
-          onClick={() => setFilter(null)}
-          className={`${filter === null ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
+          onClick={() => {
+            setFilter(null);
+            setHideUnknown(false);
+          }}
+          className={`${filter === null && !hideUnknown ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
         >
           Усі ({stations.length})
         </button>
+        {unknownCount > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilter(null);
+              setHideUnknown(v => !v);
+            }}
+            className={`${hideUnknown && filter === null ? 'btn' : 'btn btn-ghost'} px-2! py-0.5! text-[10px]!`}
+            title="Показати лише станції з відомою мережею"
+          >
+            Лише відомі
+          </button>
+        )}
         {netCounts.map(([net, n]) => (
           <button
             key={net}

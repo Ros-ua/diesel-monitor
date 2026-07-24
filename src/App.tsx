@@ -24,9 +24,10 @@ function Header({ updatedAt }: { updatedAt: string | null }) {
       <Link
         to="/ev"
         className="btn btn-ghost px-2! py-1! text-[10px]! no-underline shrink-0"
-        title="Карта зарядних станцій для електромобілів по Україні"
+        title="Мапа зарядних станцій для електромобілів по Україні"
       >
-        ⚡ Де зарядити авто
+        <span className="hidden md:inline">⚡ У вас електрокар? Де зарядка поряд</span>
+        <span className="md:hidden">⚡ Зарядки EV</span>
       </Link>
       <span className="text-[10px] text-muted/70 hidden sm:block flex-1 text-right">
         {updatedAt ? `ціни: ${timeAgo(updatedAt)}` : 'завантаження…'}
