@@ -222,6 +222,14 @@ async function main() {
     `<h1 style="font-size:20px;color:#00d2aa;text-transform:uppercase;letter-spacing:.05em">Ціни на пальне в Україні сьогодні — дизель, бензин, автогаз</h1>` +
     `<p style="font-size:13px;color:#5a7a72">Середні ціни на АЗС України станом на ${date}${Number.isFinite(dpMin) ? `. Дизель — від ${fmt(dpMin)} грн/л` : ''}. Оновлюється щодня: дизель (ДП), А-95 преміум, А-95, А-92, автогаз. Порівняння ${Object.keys(networks).length} мереж АЗС по ${Object.keys(regions).length} областях, історія, аналітика, прогноз і новини ринку.</p>` +
     `<table style="font-size:14px;border-collapse:collapse">${avgRows}</table>` +
+    `<h2 style="font-size:14px;color:#00d2aa;margin-top:16px">Де найдешевше заправитись</h2>` +
+    `<p style="font-size:12px;line-height:1.9">` +
+    `<a href="${SITE}/cheapest/dyzel/">Де найдешевший дизель</a> · ` +
+    `<a href="${SITE}/cheapest/benzyn-a95/">найдешевший бензин А-95</a> · ` +
+    `<a href="${SITE}/cheapest/benzyn-a92/">А-92</a> · ` +
+    `<a href="${SITE}/cheapest/avtogaz/">автогаз</a> · ` +
+    `<a href="${SITE}/ev/">зарядки для електромобілів</a>` +
+    `</p>` +
     `<h2 style="font-size:14px;color:#00d2aa;margin-top:16px">Ціни на пальне по областях України</h2>` +
     `<p style="font-size:12px;line-height:1.9">${regionLinks}</p>` +
     `<h2 style="font-size:14px;color:#00d2aa;margin-top:12px">Ціни по мережах АЗС</h2>` +
@@ -232,6 +240,97 @@ async function main() {
   let idx = await readFile(idxPath, 'utf-8');
   idx = idx.replace('<div id="root"></div>', `<div id="root">${seoHome}</div>`);
   await writeFile(idxPath, idx);
+
+  // ── Сторінки «де найдешевше» під запити «де найдешевший бензин/дизель» ──
+  // Головна цінність сайту: ми знаємо точну відповідь. Окрема сторінка на кожен вид пального.
+  const CHEAP = [
+    { key: 'dp', slug: 'dyzel', h1: 'Де найдешевший дизель в Україні', q: 'дизель', full: 'дизельне паливо' },
+    { key: 'a95', slug: 'benzyn-a95', h1: 'Де найдешевший бензин А-95 в Україні', q: 'бензин А-95', full: 'бензин А-95' },
+    { key: 'a92', slug: 'benzyn-a92', h1: 'Де найдешевший бензин А-92 в Україні', q: 'бензин А-92', full: 'бензин А-92' },
+    { key: 'gas', slug: 'avtogaz', h1: 'Де найдешевший автогаз в Україні', q: 'автогаз', full: 'автогаз (LPG)' },
+  ];
+  const cheapNav =
+    '<b style="font-size:9px;letter-spacing:.12em;color:#5a7a72">ДЕ НАЙДЕШЕВШЕ</b><br>' +
+    CHEAP.map(c => `<a href="${SITE}/cheapest/${c.slug}/">${esc(c.q)}</a>`).join(' · ');
+
+  for (const c of CHEAP) {
+    // рейтинг мереж від найдешевшої
+    const netRank = Object.entries(networks)
+      .filter(([, p]) => p[c.key] !== undefined)
+      .sort((a, b) => a[1][c.key] - b[1][c.key]);
+    if (netRank.length < 3) continue;
+
+    const cheapestNet = netRank[0];
+    const dearestNet = netRank[netRank.length - 1];
+    const diff = dearestNet[1][c.key] - cheapestNet[1][c.key];
+    const avgP = latest.avg?.[c.key];
+
+    // рейтинг областей за медіаною
+    const regRank = Object.entries(regions)
+      .map(([r, nets]) => {
+        const vals = Object.values(nets).map(p => p[c.key]).filter(v => v !== undefined).sort((x, y) => x - y);
+        if (!vals.length) return null;
+        const mid = Math.floor(vals.length / 2);
+        return [r, vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2];
+      })
+      .filter(Boolean)
+      .sort((a, b) => a[1] - b[1]);
+
+    const netTable =
+      '<table><tr><th>#</th><th>Мережа АЗС</th><th>Ціна, грн/л</th><th>vs середня</th></tr>' +
+      netRank
+        .slice(0, 15)
+        .map(([n, p], i) => {
+          const d = avgP ? p[c.key] - avgP : null;
+          const dTxt = d === null ? '—' : `${d > 0 ? '+' : '−'}${fmt(Math.abs(d))}`;
+          return `<tr><td>${i + 1}</td><td><a href="${SITE}/network/${slugify(n)}/">${esc(n)}</a></td><td><b>${fmt(p[c.key])}</b></td><td>${dTxt}</td></tr>`;
+        })
+        .join('') +
+      '</table>';
+
+    const regTable =
+      '<table><tr><th>#</th><th>Область</th><th>Медіанна ціна, грн/л</th></tr>' +
+      regRank
+        .slice(0, 10)
+        .map(([r, v], i) => `<tr><td>${i + 1}</td><td><a href="${SITE}/region/${slugify(r)}/">${esc(r)}</a></td><td><b>${fmt(v)}</b></td></tr>`)
+        .join('') +
+      '</table>';
+
+    const answer =
+      `<div class="card"><p style="font-size:14px;color:#e0ede9;margin:0 0 8px">` +
+      `Станом на <b>${date}</b> найдешевший ${esc(c.q)} — у мережі <b style="color:#00d2aa">${esc(cheapestNet[0])}</b>: ` +
+      `<b style="color:#00d2aa;font-size:18px">${fmt(cheapestNet[1][c.key])} грн/л</b>.` +
+      `</p><p style="font-size:12px;color:#5a7a72;margin:0">` +
+      `Найдорожче — ${esc(dearestNet[0])} (${fmt(dearestNet[1][c.key])} грн/л). Різниця між найдешевшою та найдорожчою мережею: <b>${fmt(diff)} грн/л</b>` +
+      (avgP ? `. Середня по Україні: ${fmt(avgP)} грн/л` : '') +
+      `. На повному баку (60 л) різниця мереж — близько ${Math.round(diff * 60)} грн.` +
+      `</p></div>` +
+      (regRank.length
+        ? `<div class="card"><p style="font-size:13px;color:#c5d6d0;margin:0">Найдешевша область: <b style="color:#00d2aa">${esc(regRank[0][0])}</b> (медіана ${fmt(regRank[0][1])} грн/л), найдорожча — ${esc(regRank[regRank.length - 1][0])} (${fmt(regRank[regRank.length - 1][1])} грн/л).</p></div>`
+        : '');
+
+    const html = page({
+      title: `Де найдешевший ${c.q} в Україні — ${date}: рейтинг АЗС`,
+      description: `Найдешевший ${c.q} на ${date} — ${esc(cheapestNet[0])} ${fmt(cheapestNet[1][c.key])} грн/л. Рейтинг ${netRank.length} мереж АЗС і областей від найдешевших до найдорожчих, оновлюється щодня.`,
+      canonical: `${SITE}/cheapest/${c.slug}/`,
+      h1: c.h1,
+      sub: `оновлено ${date} · рейтинг ${netRank.length} мереж АЗС · грн/л`,
+      bodyHtml:
+        answer +
+        `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">РЕЙТИНГ МЕРЕЖ — ВІД НАЙДЕШЕВШОЇ</div>${netTable}</div>` +
+        (regRank.length ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">НАЙДЕШЕВШІ ОБЛАСТІ</div>${regTable}</div>` : '') +
+        `<div class="card"><p style="font-size:11px;color:#5a7a72;margin:0">Ціни довідкові (дані Мінфіну / Консалтингової групи А-95), оновлюються щодня. Ціна на конкретній АЗС може відрізнятись — уточнюйте на місці або в застосунку мережі.</p></div>`,
+      spaLink: `${SITE}/`,
+      ctaText: 'Усі ціни, графіки та прогноз →',
+      navHtml: cheapNav + '<br><br>' + regionNav,
+    });
+
+    const dir = path.join(DIST, 'cheapest', c.slug);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, 'index.html'), html);
+    urls.push(`${SITE}/cheapest/${c.slug}/`);
+  }
+  console.log(`cheapest: ${CHEAP.length} сторінок «де найдешевше»`);
 
   // ── SEO-сторінка зарядок EV /ev/ (карта — інтерактивна на /#/ev, ця — для Google) ──
   try {
