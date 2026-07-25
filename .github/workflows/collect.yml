@@ -27,13 +27,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      # sharp потрібен для картки цін у Telegram-пості
+      - run: npm ci
       - name: Збір даних
         run: node scripts/collect.mjs
-      - name: Пост у Telegram-канал
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
-        run: node scripts/telegram-post.mjs
+      # Дані комітимо ПЕРШИМИ: збій постингу не має блокувати оновлення сайту
       - name: Коміт оновлених даних
         id: commit
         run: |
@@ -47,6 +46,21 @@ jobs:
             git commit -m "data: автооновлення цін $(date -u +%Y-%m-%d_%H:%M)"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Пост у Telegram-канал
+        continue-on-error: true # падіння посту не валить збір цін
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
+        run: node scripts/telegram-post.mjs
+      - name: Коміт стану посту
+        continue-on-error: true
+        run: |
+          git add public/data/tg-post.json public/data/tg-news-posted.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "data: стан tg-посту $(date -u +%Y-%m-%d_%H:%M)"
+            git pull --rebase --autostash origin main || true
+            git push
           fi
 
   # Пуш від GITHUB_TOKEN не запускає deploy.yml, тому деплоїмо тут само

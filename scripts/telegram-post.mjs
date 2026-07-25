@@ -8,7 +8,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeCard } from './price-card.mjs';
+// makeCard імпортуємо динамічно у try — щоб відсутність sharp не валила пост
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const SITE = 'https://diesel-monitor.pp.ua';
@@ -82,6 +82,7 @@ async function main() {
   // пост = картка з цінами + підпис (той самий текст). Якщо картка не згенерувалась — текстом.
   let res;
   try {
+    const { makeCard } = await import('./price-card.mjs');
     const png = await makeCard(latest, spark);
     const form = new FormData();
     form.append('chat_id', channel);
