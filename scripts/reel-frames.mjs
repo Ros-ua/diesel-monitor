@@ -141,8 +141,14 @@ export const REEL = { W, H, FPS, SEC, TOTAL };
 // ── збірка ──
 if (process.argv[1]?.endsWith('reel-frames.mjs')) await main();
 
+// Щоб ролики не були щотижня про дизель — чергуємо пальне по тижнях.
+// Дизель випадає частіше (він для нас головний), решта — по колу.
+const ROTATION = ['dp', 'a95', 'dp', 'a92', 'dp', 'gas', 'dp', 'a95p'];
+
 async function main() {
-const fuel = process.argv[2] ?? 'dp';
+const arg = process.argv[2];
+const week = Math.floor(Date.now() / (7 * 86_400_000));
+const fuel = arg && arg !== 'auto' ? arg : ROTATION[week % ROTATION.length];
 const days = Number(process.argv[3] ?? 180);
 
 const pts = await series(fuel, days);

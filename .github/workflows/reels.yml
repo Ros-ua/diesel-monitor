@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       fuel:
-        description: 'Вид пального (dp, a95, a95p, a92, gas)'
+        description: 'Вид пального (auto — чергування по тижнях; або dp, a95, a95p, a92, gas)'
         type: string
-        default: 'dp'
+        default: 'auto'
       days:
         description: 'Скільки точок історії брати'
         type: string
@@ -47,7 +47,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
 
       - name: Кадри
-        run: node scripts/reel-frames.mjs "${{ inputs.fuel || 'dp' }}" "${{ inputs.days || 180 }}"
+        run: node scripts/reel-frames.mjs "${{ inputs.fuel || 'auto' }}" "${{ inputs.days || 180 }}"
 
       # музика не критична: якщо не знайшлась (код 3) — збираємо без звуку
       - name: Музика (CC0)
