@@ -103,6 +103,16 @@ async function buildCard() {
   const latest = await readJson('latest.json');
   if (!latest?.avg?.dp) return console.log('story: немає даних цін — пропускаю');
 
+  // Сторіс тільки на СВІЖИХ цінах. Мінфін оновлює дані по буднях ~14:00, тож у
+  // неділю й понеділок вранці в базі ще п'ятничні числа — показувати їх удруге
+  // немає сенсу. Порівнюємо з датою даних, які вже виходили в сторіс.
+  const state = await readJson('ig-story.json', {});
+  if (state.lastDataDate === latest.date && process.env.IG_FORCE !== '1') {
+    console.log(`story: ціни за ${latest.date} вже виходили — нових даних немає, пропускаю`);
+    await writeFile(path.join(DATA_DIR, 'ig-story-pick.json'), JSON.stringify({ skip: true }));
+    return;
+  }
+
   const hist = await readJson('history.json', { days: [] });
   const spark = (hist.days ?? [])
     .filter(x => x.avg?.dp !== undefined)
@@ -127,12 +137,14 @@ async function publish() {
   if (!token) return console.log('story: INSTAGRAM_TOKEN не заданий — пропускаю');
 
   const pick = await readJson('ig-story-pick.json');
-  if (!pick?.file) return console.log('story: немає картки — пропускаю');
+  if (!pick?.file || pick.skip) return console.log('story: немає нових цін — пропускаю');
 
   const state = await readJson('ig-story.json', {});
   const today = new Date().toISOString().slice(0, 10);
   if (state.lastDay === today && process.env.IG_FORCE !== '1')
     return console.log('story: сьогодні вже публікували');
+  if (state.lastDataDate === pick.date && process.env.IG_FORCE !== '1')
+    return console.log(`story: ціни за ${pick.date} вже виходили — пропускаю`);
 
   const me = await fetch(`${API}/me?fields=id&access_token=${token}`).then(r => r.json());
   if (!me.id) throw new Error(`me: ${JSON.stringify(me)}`);
@@ -160,7 +172,12 @@ async function publish() {
 
   await writeFile(
     path.join(DATA_DIR, 'ig-story.json'),
-    JSON.stringify({ lastDay: today, mediaId: pub.id, postedAt: new Date().toISOString() })
+    JSON.stringify({
+      lastDay: today,
+      lastDataDate: pick.date, // за якими саме цінами вийшла сторіс
+      mediaId: pub.id,
+      postedAt: new Date().toISOString(),
+    })
   );
   console.log(`story: опубліковано (media ${pub.id})`);
 }
