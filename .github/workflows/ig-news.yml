@@ -1,0 +1,54 @@
+name: Новина в Instagram (щодня)
+
+on:
+  schedule:
+    # 16:00 UTC = 19:00 за Києвом — вечірній пік, через 3 години після посту цін
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram # спільна з постом цін: два пости не лізуть одночасно
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # картинку Instagram качає сам за URL — спершу кладемо файл у репозиторій
+      - name: Картка новини
+        run: node scripts/instagram-news.mjs --card
+      - name: Коміт картки
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/cards public/data/ig-news-pick.json
+          if ! git diff --cached --quiet; then
+            git commit -m "ig: картка новини $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
+
+      - name: Публікація
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+        run: node scripts/instagram-news.mjs
+
+      - name: Коміт стану
+        if: always()
+        run: |
+          git add public/data/ig-news-posted.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "data: стан ig-новин $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
