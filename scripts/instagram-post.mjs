@@ -120,6 +120,14 @@ async function publish() {
   }).then(r => r.json());
   if (!create.id) throw new Error(`media: ${JSON.stringify(create)}`);
 
+  // репетиція: контейнер створено (отже картинка доступна, підпис і права ок),
+  // але публікації немає — контейнер сам згасне за 24 години
+  if (process.env.IG_DRY === '1') {
+    console.log(`ig: РЕПЕТИЦІЯ — контейнер ${create.id} створено, не публікую`);
+    console.log(`ig: картинка ${imageUrl}`);
+    return;
+  }
+
   const pub = await fetch(`${API}/${me.id}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
