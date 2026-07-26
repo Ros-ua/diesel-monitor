@@ -19,6 +19,10 @@ on:
         description: 'Скільки точок історії брати'
         type: string
         default: '180'
+      dry:
+        description: 'Тільки зібрати відео, не публікувати'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -88,6 +92,7 @@ jobs:
           fi
 
       - name: Публікація
+        if: ${{ !inputs.dry }}
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
         run: node scripts/instagram-reel.mjs
