@@ -35,8 +35,26 @@ const humanDate = iso => {
   return `${+d} ${MONTHS[+m - 1]} ${y}`;
 };
 
+// «за 2 роки» / «за 8 місяців» — рахуємо за РЕАЛЬНИМИ датами, бо історія розріджена
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+};
+
+function periodLabel(pts) {
+  const days = (new Date(pts.at(-1).date) - new Date(pts[0].date)) / 86_400_000;
+  const months = Math.round(days / 30.44);
+  if (months >= 12) {
+    const years = Math.round(months / 12);
+    return years === 1 ? 'за рік' : `за ${years} ${plural(years, 'рік', 'роки', 'років')}`;
+  }
+  return `за ${months} ${plural(months, 'місяць', 'місяці', 'місяців')}`;
+}
+
 // ── дані ──
-async function series(fuel, days) {
+export async function series(fuel, days) {
   const hist = JSON.parse(await readFile(path.join(DATA_DIR, 'history.json'), 'utf-8'));
   const pts = (hist.days ?? [])
     .filter(d => d.avg?.[fuel] !== undefined)
@@ -46,7 +64,7 @@ async function series(fuel, days) {
 }
 
 // ── кадр ──
-function frameSvg(pts, frame, fuel) {
+export function frameSvg(pts, frame, fuel) {
   const t = frame / (TOTAL - 1);
   const hookEnd = 1.5 / SEC, drawEnd = 9 / SEC;
 
@@ -79,7 +97,7 @@ function frameSvg(pts, frame, fuel) {
   const up = diff > 0;
 
   const fuelName = FUEL_NAMES[fuel] ?? fuel;
-  const monthsSpan = Math.round(pts.length / 21); // ~21 робочий день на місяць
+  const period = periodLabel(pts);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect width="${W}" height="${H}" fill="${BG}"/>
@@ -88,7 +106,7 @@ function frameSvg(pts, frame, fuel) {
 
   <text x="90" y="290" font-family="'Courier New',monospace" font-size="62" font-weight="bold" fill="${TXT}">Скільки коштував</text>
   <text x="90" y="370" font-family="'Courier New',monospace" font-size="62" font-weight="bold" fill="${TXT}">${esc(fuelName)}</text>
-  <text x="90" y="450" font-family="'Courier New',monospace" font-size="62" font-weight="bold" fill="${AC}">за ${monthsSpan} місяців</text>
+  <text x="90" y="450" font-family="'Courier New',monospace" font-size="62" font-weight="bold" fill="${AC}">${esc(period)}</text>
 
   <g opacity="${hookOp.toFixed(3)}">
     <rect x="0" y="520" width="${W}" height="${H - 520}" fill="${BG}"/>
@@ -109,16 +127,21 @@ function frameSvg(pts, frame, fuel) {
 
   <g opacity="${outT.toFixed(3)}">
     <rect x="60" y="1520" width="${W - 120}" height="230" rx="28" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
-    <text x="110" y="1600" font-family="'Courier New',monospace" font-size="40" fill="${MUT}">Зміна за період</text>
-    <text x="110" y="1690" font-family="'Courier New',monospace" font-size="76" font-weight="bold" fill="${up ? RED : AC}">${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн</text>
-    <text x="${W - 110}" y="1690" font-family="'Courier New',monospace" font-size="76" font-weight="bold" fill="${up ? RED : AC}" text-anchor="end">${up ? '+' : '−'}${fmt(Math.abs(pct))}%</text>
+    <text x="110" y="1596" font-family="'Courier New',monospace" font-size="36" fill="${MUT}">Зміна ${esc(period)}</text>
+    <text x="110" y="1690" font-family="'Courier New',monospace" font-size="64" font-weight="bold" fill="${up ? RED : AC}">${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн</text>
+    <text x="${W - 110}" y="1690" font-family="'Courier New',monospace" font-size="64" font-weight="bold" fill="${up ? RED : AC}" text-anchor="end">${up ? '+' : '−'}${fmt(Math.abs(pct))}%</text>
   </g>
 
   <text x="${W / 2}" y="1850" font-family="'Courier New',monospace" font-size="44" fill="${AC}" text-anchor="middle">diesel-monitor.pp.ua</text>
 </svg>`;
 }
 
+export const REEL = { W, H, FPS, SEC, TOTAL };
+
 // ── збірка ──
+if (process.argv[1]?.endsWith('reel-frames.mjs')) await main();
+
+async function main() {
 const fuel = process.argv[2] ?? 'dp';
 const days = Number(process.argv[3] ?? 180);
 
@@ -146,3 +169,4 @@ const meta = {
 };
 await writeFile(path.join(ROOT, 'frames', 'meta.json'), JSON.stringify(meta, null, 2));
 console.log(JSON.stringify(meta));
+}

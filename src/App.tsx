@@ -58,6 +58,10 @@ function Footer() {
         📢 Телеграм-канал:{' '}
         <a href="https://t.me/diesel_monitor_ua" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
           @diesel_monitor_ua
+        </a>
+        {' · '}📷 Instagram:{' '}
+        <a href="https://www.instagram.com/diesel.monitor.ua/" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
+          @diesel.monitor.ua
         </a>{' '}
         — щоденні ціни й новини · Зв'язок:{' '}
         <a href="https://t.me/Ros_Hangzhou" target="_blank" rel="noreferrer" className="text-accent/70 hover:text-accent">
