@@ -1,0 +1,33 @@
+name: Повідомлення власнику
+
+# Службовий канал: надіслати довільний текст у Telegram власнику проєкту.
+# Використовується для статусів роботи, коли власник не за компʼютером.
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Текст повідомлення (HTML-розмітка Telegram)'
+        required: true
+        type: string
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Надіслати
+        env:
+          TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ vars.TG_OWNER_CHAT }}
+          TEXT: ${{ inputs.text }}
+        run: |
+          code=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+            -X POST "https://api.telegram.org/bot$TG/sendMessage" \
+            --data-urlencode "chat_id=$CHAT" \
+            --data-urlencode "text=$TEXT" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "link_preview_options={\"is_disabled\":true}")
+          if [ "$code" != "200" ]; then
+            echo "Telegram відповів $code:"; cat /tmp/resp.json; exit 1
+          fi
+          echo "надіслано"

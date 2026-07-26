@@ -69,14 +69,64 @@ function allowedImpacts(history) {
   return { allowed: ['up', 'down'], dir: 'flat', pct };
 }
 
+// Українські джерела мають пріоритет: свій ринок ближчий читачу, ніж танкери.
+// (На САЙТІ показуємо всі новини — пріоритет лише для соцмереж.)
+const UA_SOURCES = new Set(['Економічна правда', 'УНІАН', 'Укрінформ', 'РБК-Україна']);
+const isUa = n => UA_SOURCES.has(n.source);
+
+// Щоб не в кожному пості стояв дизель — чергуємо види пального. Показуємо те,
+// що зараз найсильніше дорожчає, але не те саме, що минулого разу.
+const FUEL_LABELS = { dp: 'Дизель', a95p: 'А-95+', a95: 'А-95', a92: 'А-92', gas: 'Автогаз' };
+
+// Для картки «де найдешевше» потрібен вибір мереж, інакше вийде порожньо
+// (А-92, наприклад, продає лише кілька мереж).
+function netCount(latest, fuel) {
+  return Object.values(latest?.networks ?? {})
+    .filter(v => v?.[fuel] !== undefined && (v.regionCount ?? 0) >= 3).length;
+}
+
+function pickFuelForCheapest(latest, lastFuel) {
+  const rich = Object.keys(FUEL_LABELS).filter(k => netCount(latest, k) >= 4);
+  if (!rich.length) return null;
+  return rich.find(k => k !== lastFuel) ?? rich[0];
+}
+
+function pickFuel(latest, lastFuel) {
+  const keys = Object.keys(FUEL_LABELS).filter(k => latest?.avg?.[k] !== undefined);
+  if (!keys.length) return null;
+  const ch = k => latest.avgChange?.[k] ?? 0;
+  // спершу те, що дорожчає найсильніше; якщо дешевшає все — найбільший рух
+  const anyUp = keys.some(k => ch(k) > 0.005);
+  const sorted = anyUp
+    ? [...keys].sort((a, b) => ch(b) - ch(a))
+    : [...keys].sort((a, b) => Math.abs(ch(b)) - Math.abs(ch(a)));
+  return sorted.find(k => k !== lastFuel) ?? sorted[0];
+}
+
+// Воєнний контент в Instagram не постимо взагалі — модерація Meta до нього
+// сувора, а молодий акаунт одного страйку може не пережити (перший наш акаунт
+// забанили за добу). У Telegram такі новини лишаються — там цього обмеження немає.
+const WAR = [
+  /(удар|атак|обстріл|бомбард|ракет|дрон|безпілотник)\w*/i,
+  /(вибух|загибл|поранен|жертв|окупант|фронт|наступ|бойов)\w*/i,
+  /(війн|воєнн|військов)\w*/i,
+];
+const isWar = n => WAR.some(re => re.test(`${n.title ?? ''} ${n.summary ?? ''}`));
+
 // Новини, де Україна подана як винуватець, у наш акаунт не йдуть: під нашим
 // логотипом це читається як ми транслюємо звинувачення проти своїх.
 const RISKY_UA = [
+  // Україну в чомусь звинувачують
   /звинувач\w*[^.]{0,40}україн/i,
   /україн\w*[^.]{0,30}звинувач/i,
   /обвиня\w*[^.]{0,40}украин/i,
   /украин\w*[^.]{0,30}обвиня/i,
-  /(атак|удар|напад)\w*[^.]{0,25}україн\w*[^.]{0,25}(судн|танкер|об.єкт)/i,
+  // Україна подана як той, хто атакує (у будь-якому порядку слів)
+  /україн\w*[^.]{0,40}(атак|удар|обстріл|бомб|потопи|підірва)/i,
+  /(атак|удар|обстріл|напад)\w*[^.]{0,40}україн\w*[^.]{0,40}(судн|танкер|корабл|об.єкт)/i,
+  /українськ\w*[^.]{0,30}(дрон|безпілотник|ракет)\w*[^.]{0,30}(атак|удар|вразил|поціл)/i,
+  // заклики/вимоги до України припинити щось — той самий підтекст
+  /(закликал|вимага|поперед)\w*[^.]{0,30}україн\w*[^.]{0,30}не\s/i,
 ];
 const riskyForUa = n =>
   RISKY_UA.some(re => re.test(`${n.title ?? ''} ${n.summary ?? ''}`));
@@ -117,7 +167,7 @@ function fit(text, sizes, maxLines) {
   return { size, lines: wrap(text, Math.floor(TEXT_W / (size * CHAR_W)), maxLines) };
 }
 
-function newsCardSvg(item, latest) {
+function newsCardSvg(item, latest, fuel) {
   const W = 1080, H = 1080;
   const up = item.impact !== 'down';
   const col = up ? RED : AC;
@@ -135,9 +185,9 @@ function newsCardSvg(item, latest) {
 
   // блок «що це означає для нас» — новина без наших цифр не має цінності
   const fmt = v => v.toFixed(2).replace('.', ',');
-  const dp = latest?.avg?.dp;
-  const ch = latest?.avgChange?.dp;
-  const factsBox = dp === undefined ? '' : (() => {
+  const price = fuel ? latest?.avg?.[fuel] : undefined;
+  const ch = fuel ? latest?.avgChange?.[fuel] : undefined;
+  const factsBox = price === undefined ? '' : (() => {
     const chUp = ch !== undefined && ch > 0.005;
     const chDown = ch !== undefined && ch < -0.005;
     const chCol = chUp ? RED : chDown ? AC : MUT;
@@ -145,8 +195,8 @@ function newsCardSvg(item, latest) {
       : chUp ? `▲ +${fmt(ch)}` : chDown ? `▼ −${fmt(Math.abs(ch))}` : '→ 0,00';
     return `
   <rect x="70" y="790" width="940" height="120" rx="18" fill="${BG}" stroke="${LINE}" stroke-width="2"/>
-  <text x="106" y="838" font-family="'Courier New',monospace" font-size="26" fill="${MUT}">Дизель в Україні зараз</text>
-  <text x="106" y="890" font-family="'Courier New',monospace" font-size="46" font-weight="bold" fill="${AC}">${fmt(dp)} грн/л</text>
+  <text x="106" y="838" font-family="'Courier New',monospace" font-size="26" fill="${MUT}">${esc(FUEL_LABELS[fuel])} в Україні зараз</text>
+  <text x="106" y="890" font-family="'Courier New',monospace" font-size="46" font-weight="bold" fill="${AC}">${fmt(price)} грн/л</text>
   <text x="974" y="884" font-family="'Courier New',monospace" font-size="38" font-weight="bold" fill="${chCol}" text-anchor="end">${chTxt}</text>`;
   })();
 
@@ -169,6 +219,48 @@ function newsCardSvg(item, latest) {
 </svg>`;
 }
 
+// Коли свіжих безпечних новин немає (буває часто — потік буває воєнним),
+// акаунт не мовчить: постимо корисний факт із наших даних — де сьогодні
+// найдешевше. Це рівно те, що аудиторія й шукає.
+function cheapestCardSvg(latest, fuel) {
+  const W = 1080, H = 1080;
+  const fmt = v => v.toFixed(2).replace('.', ',');
+  const label = FUEL_LABELS[fuel] ?? 'Пальне';
+
+  const rows = Object.entries(latest.networks ?? {})
+    .filter(([, v]) => v?.[fuel] !== undefined && (v.regionCount ?? 0) >= 3)
+    .map(([name, v]) => ({ name, price: v[fuel] }))
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 5);
+
+  const avg = latest.avg?.[fuel];
+  const [y, m, d] = (latest.date ?? '').split('-');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <rect width="${W}" height="${H}" fill="${BG}"/>
+  <rect x="24" y="24" width="${W - 48}" height="${H - 48}" rx="24" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
+  <circle cx="78" cy="92" r="9" fill="${AC}"/>
+  <text x="100" y="102" font-family="'Courier New',monospace" font-size="32" letter-spacing="6" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>
+  <text x="1010" y="102" font-family="'Courier New',monospace" font-size="28" fill="${MUT}" text-anchor="end">${d}.${m}.${y}</text>
+
+  <text x="70" y="230" font-family="'Courier New',monospace" font-size="58" font-weight="bold" fill="${TXT}">Де сьогодні</text>
+  <text x="70" y="300" font-family="'Courier New',monospace" font-size="58" font-weight="bold" fill="${TXT}">найдешевший</text>
+  <text x="70" y="370" font-family="'Courier New',monospace" font-size="58" font-weight="bold" fill="${AC}">${esc(label)}</text>
+
+  ${rows.map((r, i) => {
+    const y0 = 470 + i * 96;
+    const win = i === 0;
+    return `
+  <text x="70" y="${y0}" font-family="'Courier New',monospace" font-size="${win ? 44 : 38}" fill="${win ? AC : TXT}">${i + 1}. ${esc(r.name.slice(0, 18))}</text>
+  <text x="1010" y="${y0}" font-family="'Courier New',monospace" font-size="${win ? 50 : 42}" font-weight="bold" fill="${win ? AC : TXT}" text-anchor="end">${fmt(r.price)}</text>
+  ${i < rows.length - 1 ? `<line x1="70" y1="${y0 + 26}" x2="1010" y2="${y0 + 26}" stroke="${LINE}" stroke-width="1"/>` : ''}`;
+  }).join('')}
+
+  ${avg === undefined ? '' : `<text x="70" y="985" font-family="'Courier New',monospace" font-size="30" fill="${MUT}">Середня: ${fmt(avg)} грн/л</text>`}
+  <text x="1010" y="985" font-family="'Courier New',monospace" font-size="28" fill="${AC}" text-anchor="end">diesel-monitor.pp.ua</text>
+</svg>`;
+}
+
 // ── вибір новини + картка ──
 async function buildCard() {
   const news = await readJson('news.json');
@@ -183,27 +275,51 @@ async function buildCard() {
       && n.publishedAt && new Date(n.publishedAt).getTime() >= freshAfter
   );
   const risky = fresh.filter(riskyForUa);
+  const war = fresh.filter(n => !riskyForUa(n) && isWar(n));
   if (risky.length) console.log(`ig-news: відсіяно як ризиковані для UA: ${risky.length}`);
+  if (war.length) console.log(`ig-news: відсіяно воєнних (модерація Instagram): ${war.length}`);
 
-  const pick = fresh
-    .filter(n => !riskyForUa(n))
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
-
-  if (!pick) {
-    console.log(`ig-news: свіжих новин у напрямі тренду (${dir}) немає — пропускаю`);
-    await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ skip: true }));
-    return;
-  }
+  const safe = fresh.filter(n => !riskyForUa(n) && !isWar(n));
+  const byDate = (a, b) => b.publishedAt.localeCompare(a.publishedAt);
+  // спершу українські джерела, світові — лише коли своїх немає
+  const ukr = safe.filter(isUa).sort(byDate);
+  const world = safe.filter(n => !isUa(n)).sort(byDate);
+  const pick = ukr[0] ?? world[0];
+  if (pick) console.log(`ig-news: обрано ${isUa(pick) ? 'українську' : 'світову'} новину (укр у черзі: ${ukr.length})`);
 
   const latest = await readJson('latest.json');
+  const fuel = pickFuel(latest, state.lastFuel);
+
+  // новин немає — постимо корисний факт із наших даних
+  if (!pick) {
+    console.log(`ig-news: безпечних новин у напрямі тренду (${dir}) немає — постимо «де найдешевше»`);
+    const cheapFuel = pickFuelForCheapest(latest, state.lastFuel);
+    if (!latest?.networks || !cheapFuel) {
+      await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ skip: true }));
+      return;
+    }
+    const sharp0 = (await import('sharp')).default;
+    const jpg0 = await sharp0(Buffer.from(cheapestCardSvg(latest, cheapFuel))).jpeg({ quality: 92 }).toBuffer();
+    const today0 = new Date().toISOString().slice(0, 10);
+    const file0 = `cheap-${today0}.jpg`;
+    await mkdir(CARDS_DIR, { recursive: true });
+    await writeFile(path.join(CARDS_DIR, file0), jpg0);
+    await writeFile(
+      path.join(DATA_DIR, 'ig-news-pick.json'),
+      JSON.stringify({ kind: 'cheapest', fuel: cheapFuel, file: file0, url: `cheapest:${today0}:${cheapFuel}` })
+    );
+    console.log(`ig-news: картка «де найдешевший ${FUEL_LABELS[cheapFuel]}» (${netCount(latest, cheapFuel)} мереж)`);
+    return;
+  }
   const sharp = (await import('sharp')).default;
-  const jpg = await sharp(Buffer.from(newsCardSvg(pick, latest))).jpeg({ quality: 92 }).toBuffer();
+  const jpg = await sharp(Buffer.from(newsCardSvg(pick, latest, fuel))).jpeg({ quality: 92 }).toBuffer();
 
   const today = new Date().toISOString().slice(0, 10);
   const file = `news-${today}.jpg`;
   await mkdir(CARDS_DIR, { recursive: true });
   await writeFile(path.join(CARDS_DIR, file), jpg);
-  await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ ...pick, file }));
+  await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ ...pick, file, fuel }));
+  console.log(`ig-news: пальне в блоці — ${FUEL_LABELS[fuel] ?? '—'} (минулого разу ${FUEL_LABELS[state.lastFuel] ?? '—'})`);
 
   const old = (await readdir(CARDS_DIR)).filter(f => f.startsWith('news-')).sort().slice(0, -7);
   for (const f of old) await unlink(path.join(CARDS_DIR, f));
@@ -226,30 +342,59 @@ async function publish() {
   const me = await fetch(`${API}/me?fields=id,username&access_token=${token}`).then(r => r.json());
   if (!me.id) throw new Error(`me: ${JSON.stringify(me)}`);
 
-  const up = pick.impact !== 'down';
   const latest = await readJson('latest.json');
   const f = v => v.toFixed(2).replace('.', ',');
 
-  // головне: одразу привʼязуємо світову новину до наших цифр
-  let facts = '';
-  if (latest?.avg?.dp !== undefined) {
-    const ch = latest.avgChange?.dp;
-    const chTxt = ch === undefined || Math.abs(ch) < 0.005 ? ''
-      : ch > 0 ? ` (за тиждень +${f(ch)})` : ` (за тиждень −${f(Math.abs(ch))})`;
-    facts =
-      `📊 Що зараз в Україні:\n` +
-      `Дизель ${f(latest.avg.dp)} грн/л${chTxt}\n` +
-      (latest.avg.a95 !== undefined ? `А-95 ${f(latest.avg.a95)} грн/л\n` : '') +
-      `\n`;
-  }
+  const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
+  let caption;
 
-  const caption =
-    `${up ? '🔺' : '🟢'} ${pick.title}\n\n` +
-    (pick.summary ? `${pick.summary.slice(0, 300).replace(/\s+\S*$/, '')}…\n\n` : '') +
-    facts +
-    `Джерело: ${pick.source}\n\n` +
-    `Ціни по всіх мережах АЗС і областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
-    `#цінинапальне #пальне #АЗС #дизель #Україна`;
+  if (pick.kind === 'cheapest') {
+    // картка «де найдешевше» — коли безпечних новин не знайшлося
+    const label = FUEL_LABELS[pick.fuel] ?? 'Пальне';
+    const top = Object.entries(latest?.networks ?? {})
+      .filter(([, v]) => v?.[pick.fuel] !== undefined && (v.regionCount ?? 0) >= 3)
+      .map(([name, v]) => ({ name, price: v[pick.fuel] }))
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 3);
+    const tag = label.toLowerCase().replace(/[^а-яїієґa-z0-9]/gi, '');
+    caption =
+      `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
+      top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
+      (latest?.avg?.[pick.fuel] !== undefined
+        ? `\n\nСередня по Україні: ${f(latest.avg[pick.fuel])} грн/л`
+        : '') +
+      `\n\nЦіни по всіх мережах і областях — ${SITE_LINE}\n\n` +
+      `#цінинапальне #пальне #АЗС #${tag} #Україна`;
+  } else {
+    const up = pick.impact !== 'down';
+
+    // привʼязуємо новину до наших цифр: головним — те пальне, що на картці
+    let facts = '';
+    const fuel = pick.fuel && latest?.avg?.[pick.fuel] !== undefined ? pick.fuel : 'dp';
+    if (latest?.avg?.[fuel] !== undefined) {
+      const ch = latest.avgChange?.[fuel];
+      const chTxt = ch === undefined || Math.abs(ch) < 0.005 ? ''
+        : ch > 0 ? ` (за тиждень +${f(ch)})` : ` (за тиждень −${f(Math.abs(ch))})`;
+      const others = Object.entries(FUEL_LABELS)
+        .filter(([k]) => k !== fuel && latest.avg[k] !== undefined)
+        .slice(0, 3)
+        .map(([k, label]) => `${label} ${f(latest.avg[k])}`)
+        .join(' · ');
+      facts =
+        `📊 Що зараз в Україні:\n` +
+        `${FUEL_LABELS[fuel]} ${f(latest.avg[fuel])} грн/л${chTxt}\n` +
+        (others ? `${others}\n` : '') +
+        `\n`;
+    }
+
+    caption =
+      `${up ? '🔺' : '🟢'} ${pick.title}\n\n` +
+      (pick.summary ? `${pick.summary.slice(0, 300).replace(/\s+\S*$/, '')}…\n\n` : '') +
+      facts +
+      `Джерело: ${pick.source}\n\n` +
+      `Ціни по всіх мережах АЗС і областях — ${SITE_LINE}\n\n` +
+      `#цінинапальне #пальне #АЗС #дизель #Україна`;
+  }
 
   const create = await fetch(`${API}/${me.id}/media`, {
     method: 'POST',
@@ -270,7 +415,11 @@ async function publish() {
   posted.add(pick.url);
   await writeFile(
     path.join(DATA_DIR, 'ig-news-posted.json'),
-    JSON.stringify({ urls: [...posted].slice(-POSTED_CAP), updated: new Date().toISOString() })
+    JSON.stringify({
+      urls: [...posted].slice(-POSTED_CAP),
+      lastFuel: pick.fuel ?? state.lastFuel, // щоб наступного разу взяти інше пальне
+      updated: new Date().toISOString(),
+    })
   );
   console.log(`ig-news: опубліковано «${pick.title.slice(0, 60)}» (media ${pub.id})`);
 }

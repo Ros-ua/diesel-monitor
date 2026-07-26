@@ -23,6 +23,9 @@ const channel = process.env.TELEGRAM_CHANNEL;
 
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// українські джерела (решта у lib/news.mjs позначені lang:'en')
+const UA_SOURCES = new Set(['Економічна правда', 'УНІАН', 'Укрінформ', 'РБК-Україна']);
+
 async function readJson(file, fallback = null) {
   try {
     return JSON.parse(await readFile(path.join(DATA_DIR, file), 'utf-8'));
@@ -78,18 +81,24 @@ async function main() {
     `tg-news: тренд дизеля ${dir}${pct !== null ? ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}% за ~${TREND_DAYS}д)` : ''} → постимо: ${allowed.join(', ')}`
   );
 
-  const candidates = (news?.items ?? [])
-    .filter(
-      n =>
-        allowed.includes(n.impact) &&
-        n.url &&
-        !posted.has(n.url) &&
-        n.publishedAt &&
-        new Date(n.publishedAt).getTime() >= freshAfter
-    )
-    // старіші перші — у каналі буде хронологічний порядок
-    .sort((a, b) => a.publishedAt.localeCompare(b.publishedAt))
-    .slice(0, MAX_PER_RUN);
+  const fresh = (news?.items ?? []).filter(
+    n =>
+      allowed.includes(n.impact) &&
+      n.url &&
+      !posted.has(n.url) &&
+      n.publishedAt &&
+      new Date(n.publishedAt).getTime() >= freshAfter
+  );
+
+  // Український ринок ближчий читачу, ніж світові танкери — свої новини першими.
+  // (На САЙТІ показуються всі; пріоритет лише для каналу.)
+  const byDate = (a, b) => a.publishedAt.localeCompare(b.publishedAt);
+  const ukr = fresh.filter(n => UA_SOURCES.has(n.source)).sort(byDate);
+  const world = fresh.filter(n => !UA_SOURCES.has(n.source)).sort(byDate);
+  const candidates = [...ukr, ...world].slice(0, MAX_PER_RUN);
+  if (candidates.length) {
+    console.log(`tg-news: у черзі укр ${ukr.length}, світових ${world.length}`);
+  }
 
   if (!candidates.length) {
     console.log('tg-news: свіжих новин у напрямі тренду немає');
