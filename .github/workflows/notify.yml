@@ -10,6 +10,10 @@ on:
         description: 'Текст повідомлення (HTML-розмітка Telegram)'
         required: true
         type: string
+      video_url:
+        description: 'Необовʼязково: посилання на відео — прийде як ролик з підписом'
+        required: false
+        type: string
 
 jobs:
   send:
@@ -20,13 +24,24 @@ jobs:
           TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT: ${{ vars.TG_OWNER_CHAT }}
           TEXT: ${{ inputs.text }}
+          VIDEO: ${{ inputs.video_url }}
         run: |
+          if [ -n "$VIDEO" ]; then
+            # Telegram сам завантажить відео за посиланням і надішле з підписом
+            code=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+              -X POST "https://api.telegram.org/bot$TG/sendVideo" \
+              --data-urlencode "chat_id=$CHAT" \
+              --data-urlencode "video=$VIDEO" \
+              --data-urlencode "caption=$TEXT" \
+              --data-urlencode "parse_mode=HTML")
+          else
           code=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
             -X POST "https://api.telegram.org/bot$TG/sendMessage" \
             --data-urlencode "chat_id=$CHAT" \
             --data-urlencode "text=$TEXT" \
             --data-urlencode "parse_mode=HTML" \
             --data-urlencode "link_preview_options={\"is_disabled\":true}")
+          fi
           if [ "$code" != "200" ]; then
             echo "Telegram відповів $code:"; cat /tmp/resp.json; exit 1
           fi
