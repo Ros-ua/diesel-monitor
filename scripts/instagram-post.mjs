@@ -128,6 +128,10 @@ async function publish() {
     return;
   }
 
+  // без цього буває «media is not ready for publishing» — Instagram ще качає картинку
+  const { waitReady } = await import('./instagram-news.mjs');
+  await waitReady(create.id, token);
+
   const pub = await fetch(`${API}/${me.id}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

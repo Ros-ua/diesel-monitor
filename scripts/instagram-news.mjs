@@ -33,6 +33,20 @@ async function readJson(file, fallback = null) {
   }
 }
 
+// Instagram качає й обробляє картинку асинхронно: публікувати можна лише коли
+// контейнер став FINISHED, інакше — «media is not ready for publishing».
+export async function waitReady(id, tok, tries = 20) {
+  for (let i = 0; i < tries; i++) {
+    const st = await fetch(
+      `${API}/${id}?fields=status_code,status&access_token=${tok}`
+    ).then(r => r.json());
+    if (st.status_code === 'FINISHED') return;
+    if (st.status_code === 'ERROR') throw new Error(`контейнер: ${st.status ?? 'ERROR'}`);
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  throw new Error('контейнер не став готовим за 60 с');
+}
+
 // ── тренд цін: у який бік постимо новини (та сама логіка, що в Telegram) ──
 const TREND_DAYS = 14;
 const TREND_PCT = 1;
@@ -244,6 +258,8 @@ async function publish() {
   }).then(r => r.json());
   if (!create.id) throw new Error(`media: ${JSON.stringify(create)}`);
 
+  await waitReady(create.id, token);
+
   const pub = await fetch(`${API}/${me.id}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -259,8 +275,11 @@ async function publish() {
   console.log(`ig-news: опубліковано «${pick.title.slice(0, 60)}» (media ${pub.id})`);
 }
 
-const mode = process.argv[2];
-(mode === '--card' ? buildCard() : publish()).catch(e => {
-  console.error('ig-news ЗБІЙ:', e.message);
-  process.exit(1);
-});
+// запускаємо лише при прямому виклику — instagram-post.mjs імпортує звідси waitReady
+if (process.argv[1]?.endsWith('instagram-news.mjs')) {
+  const mode = process.argv[2];
+  (mode === '--card' ? buildCard() : publish()).catch(e => {
+    console.error('ig-news ЗБІЙ:', e.message);
+    process.exit(1);
+  });
+}
