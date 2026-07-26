@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# кадри для Reels — проміжні, у репозиторій не йдуть
+frames/

@@ -155,17 +155,20 @@ for (let i = 0; i < TOTAL; i++) {
 }
 
 const first = pts[0].value, last = pts[pts.length - 1].value;
+const spanDays = (new Date(pts.at(-1).date) - new Date(pts[0].date)) / 86_400_000;
 const meta = {
   fuel,
   fuelName: FUEL_NAMES[fuel] ?? fuel,
   from: pts[0].date,
   to: pts[pts.length - 1].date,
+  months: Math.round(spanDays / 30.44),
   first,
   last,
   diff: +(last - first).toFixed(2),
   pct: +(((last - first) / first) * 100).toFixed(1),
   frames: TOTAL,
   fps: FPS,
+  file: `reel-${pts.at(-1).date}-${fuel}.mp4`, // ffmpeg збере саме під цим імʼям
 };
 await writeFile(path.join(ROOT, 'frames', 'meta.json'), JSON.stringify(meta, null, 2));
 console.log(JSON.stringify(meta));

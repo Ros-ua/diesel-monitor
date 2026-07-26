@@ -1,0 +1,103 @@
+name: Reels в Instagram (щотижня)
+
+# Раз на тиждень збираємо вертикальне відео з анімованим графіком ціни
+# й публікуємо як Reels. Музика — CC0 з Openverse (комерція дозволена,
+# атрибуція не потрібна). Трендові звуки Instagram через API недоступні
+# нікому — це обмеження Meta, не наше.
+
+on:
+  schedule:
+    # четвер 05:30 UTC = 08:30 за Києвом — ранковий пік у ніші
+    - cron: '30 5 * * 4'
+  workflow_dispatch:
+    inputs:
+      fuel:
+        description: 'Вид пального (dp, a95, a95p, a92, gas)'
+        type: string
+        default: 'dp'
+      days:
+        description: 'Скільки точок історії брати'
+        type: string
+        default: '180'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram
+  cancel-in-progress: false
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Кадри
+        run: node scripts/reel-frames.mjs "${{ inputs.fuel || 'dp' }}" "${{ inputs.days || 180 }}"
+
+      # музика не критична: якщо не знайшлась (код 3) — збираємо без звуку
+      - name: Музика (CC0)
+        id: music
+        continue-on-error: true
+        run: node scripts/reel-music.mjs 12
+
+      - name: Збірка відео
+        run: |
+          FILE=$(node -e "console.log(require('./frames/meta.json').file)")
+          mkdir -p public/reels
+          if [ -f frames/music.mp3 ]; then
+            # -shortest обріже музику по відео; луп на випадок короткого треку
+            ffmpeg -y -loglevel error \
+              -framerate 24 -i frames/f%04d.png \
+              -stream_loop -1 -i frames/music.mp3 \
+              -c:v libx264 -pix_fmt yuv420p -profile:v high -level 4.0 \
+              -c:a aac -b:a 128k -ar 44100 \
+              -af "afade=t=out:st=10:d=2" \
+              -shortest -movflags +faststart \
+              "public/reels/$FILE"
+          else
+            ffmpeg -y -loglevel error \
+              -framerate 24 -i frames/f%04d.png \
+              -c:v libx264 -pix_fmt yuv420p -profile:v high -level 4.0 \
+              -movflags +faststart \
+              "public/reels/$FILE"
+          fi
+          ls -lh "public/reels/$FILE"
+
+      # тримаємо лише 3 останні ролики — відео важке
+      - name: Прибрати старі ролики
+        run: |
+          cd public/reels
+          ls -1t *.mp4 2>/dev/null | tail -n +4 | xargs -r rm --
+
+      - name: Коміт відео
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/reels
+          if ! git diff --cached --quiet; then
+            git commit -m "reel: відео $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
+
+      - name: Публікація
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+        run: node scripts/instagram-reel.mjs
+
+      - name: Коміт стану
+        if: always()
+        run: |
+          git add public/data/ig-reel.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "data: стан Reels $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
