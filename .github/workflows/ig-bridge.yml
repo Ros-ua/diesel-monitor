@@ -6,7 +6,10 @@ name: Міст Instagram ↔ Telegram
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    # Поки застосунок не пройшов App Review, Meta не віддає ані директ, ані
+    # тексти коментарів — тож частий опит марно палить ресурси. Після ревʼю
+    # повернути '*/5 * * * *'.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       test:
