@@ -1,0 +1,50 @@
+name: Продовження токена Instagram
+
+# Токен Instagram живе 60 днів, але його можна продовжувати нескінченно.
+# Раз на місяць продовжуємо — тоді термін ніколи не спливає.
+# Потрібен секрет GH_PAT (fine-grained токен цього репозиторію з правом
+# "Secrets: read and write"), бо GITHUB_TOKEN секрети переписувати не може.
+
+on:
+  schedule:
+    - cron: '0 5 1 * *' # 1-го числа щомісяця
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Продовжити й перезаписати секрет
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          OLD: ${{ secrets.INSTAGRAM_TOKEN }}
+          TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          res=$(curl -s -G 'https://graph.instagram.com/refresh_access_token' \
+            --data-urlencode 'grant_type=ig_refresh_token' \
+            --data-urlencode "access_token=$OLD")
+          new=$(echo "$res" | jq -r '.access_token // empty')
+          days=$(echo "$res" | jq -r '(.expires_in // 0) / 86400 | floor')
+
+          if [ -z "$new" ]; then
+            echo "Продовжити не вдалося: $(echo "$res" | jq -c '.error // .')"
+            if [ -n "$TG" ]; then
+              curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" \
+                -d chat_id=715480502 \
+                -d text="⚠️ Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)."
+            fi
+            exit 1
+          fi
+
+          if [ -z "$GH_TOKEN" ]; then
+            echo "GH_PAT не заданий — секрет не перезаписано."
+            if [ -n "$TG" ]; then
+              curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" \
+                -d chat_id=715480502 \
+                -d text="ℹ️ Токен Instagram продовжено на $days дн., але секрет у GitHub не оновлено (немає GH_PAT). Скажи Клоду — доналаштує."
+            fi
+            exit 1
+          fi
+
+          echo "$new" | gh secret set INSTAGRAM_TOKEN --repo "${{ github.repository }}"
+          echo "Токен продовжено ще на $days днів."
