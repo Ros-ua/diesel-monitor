@@ -120,9 +120,14 @@ async function main() {
     const postedState = (await readJson('tg-news-posted.json', { urls: [] })) ?? { urls: [] };
     if (!postedState.urls.includes(top.url)) {
       postedState.urls.push(top.url);
+      // day/count лишаємо як є — це денна стеля новин у telegram-news.mjs
       await writeFile(
         path.join(DATA_DIR, 'tg-news-posted.json'),
-        JSON.stringify({ urls: postedState.urls.slice(-300), updated: new Date().toISOString() })
+        JSON.stringify({
+          ...postedState,
+          urls: postedState.urls.slice(-300),
+          updated: new Date().toISOString(),
+        })
       );
     }
   }

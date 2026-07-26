@@ -15,6 +15,9 @@ const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 const SITE = 'https://diesel-monitor.pp.ua';
 // Ліміти можна перекрити env-змінними (для разового бекфілу архіву)
 const MAX_PER_RUN = Number(process.env.TG_NEWS_MAX) || 1; // 1 новина за запуск (не спамимо)
+// Денна стеля. Без неї виходило ~10 новин на добу — для нішевого каналу це
+// читається як спам і дає відписки. Краще менше, але помітніше.
+const MAX_PER_DAY = Number(process.env.TG_NEWS_MAX_DAY) || 4;
 const FRESH_HOURS = Number(process.env.TG_NEWS_FRESH_HOURS) || 12; // лише свіжі
 const POSTED_CAP = 300;
 
@@ -74,6 +77,14 @@ async function main() {
   const state = await readJson('tg-news-posted.json', { urls: [] });
   const posted = new Set(state.urls);
   const freshAfter = Date.now() - FRESH_HOURS * 3_600_000;
+
+  // денна стеля: лічильник скидається щодоби
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = state.day === today ? state.count ?? 0 : 0;
+  if (todayCount >= MAX_PER_DAY) {
+    console.log(`tg-news: за сьогодні вже ${todayCount} новин (стеля ${MAX_PER_DAY}) — пропускаю`);
+    return;
+  }
 
   // напрям каналу за трендом цін на дизель
   const { allowed, dir, pct } = allowedImpacts(history);
@@ -139,7 +150,12 @@ async function main() {
 
   await writeFile(
     path.join(DATA_DIR, 'tg-news-posted.json'),
-    JSON.stringify({ urls: [...posted].slice(-POSTED_CAP), updated: new Date().toISOString() })
+    JSON.stringify({
+      urls: [...posted].slice(-POSTED_CAP),
+      day: today,
+      count: todayCount + candidates.length,
+      updated: new Date().toISOString(),
+    })
   );
 }
 
