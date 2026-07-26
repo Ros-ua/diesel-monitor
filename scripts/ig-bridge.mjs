@@ -207,6 +207,21 @@ async function main() {
   state.selfId = me.id;
   state.selfUsername = me.username;
 
+  // разова перевірка звʼязку: чи правильний chat_id і чи бот може писати власнику
+  if (process.env.IG_BRIDGE_TEST === '1') {
+    await tg('sendMessage', {
+      chat_id: owner,
+      parse_mode: 'HTML',
+      text:
+        `🔗 <b>Міст Instagram ↔ Telegram увімкнено</b>\n\n` +
+        `Підключено акаунт: @${esc(me.username)}\n` +
+        `Перевірка кожні 5 хвилин.\n\n` +
+        `Коли хтось напише коментар або в директ — повідомлення прийде сюди. ` +
+        `Щоб відповісти, зроби <b>реплай</b> на нього.`,
+    });
+    console.log('ig-bridge: тестове повідомлення надіслано');
+  }
+
   const [c, d, r] = [await pullComments(state), await pullMessages(state), await pushReplies(state)];
 
   // карту тримаємо компактною — останні 200 звʼязок

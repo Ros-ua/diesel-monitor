@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      test:
+        description: 'Надіслати тестове повідомлення власнику'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,6 +47,7 @@ jobs:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_OWNER_CHAT: ${{ vars.TG_OWNER_CHAT }}
+          IG_BRIDGE_TEST: ${{ inputs.test && '1' || '0' }}
         run: node ../code/scripts/ig-bridge.mjs
 
       - name: Зберегти стан
