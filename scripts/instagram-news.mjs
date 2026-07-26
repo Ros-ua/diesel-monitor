@@ -55,6 +55,18 @@ function allowedImpacts(history) {
   return { allowed: ['up', 'down'], dir: 'flat', pct };
 }
 
+// Новини, де Україна подана як винуватець, у наш акаунт не йдуть: під нашим
+// логотипом це читається як ми транслюємо звинувачення проти своїх.
+const RISKY_UA = [
+  /звинувач\w*[^.]{0,40}україн/i,
+  /україн\w*[^.]{0,30}звинувач/i,
+  /обвиня\w*[^.]{0,40}украин/i,
+  /украин\w*[^.]{0,30}обвиня/i,
+  /(атак|удар|напад)\w*[^.]{0,25}україн\w*[^.]{0,25}(судн|танкер|об.єкт)/i,
+];
+const riskyForUa = n =>
+  RISKY_UA.some(re => re.test(`${n.title ?? ''} ${n.summary ?? ''}`));
+
 // ── перенос тексту по словах (у SVG немає авто-переносу) ──
 // Courier New моноширинний: ширина символа ≈ 0.6 від кегля.
 const CHAR_W = 0.6;
@@ -91,21 +103,38 @@ function fit(text, sizes, maxLines) {
   return { size, lines: wrap(text, Math.floor(TEXT_W / (size * CHAR_W)), maxLines) };
 }
 
-function newsCardSvg(item) {
+function newsCardSvg(item, latest) {
   const W = 1080, H = 1080;
   const up = item.impact !== 'down';
   const col = up ? RED : AC;
   const badge = up ? 'ЦІНИ ВГОРУ' : 'ЦІНИ ВНИЗ';
   const arrow = up ? '▲' : '▼';
 
-  const { size: titleSize, lines: title } = fit(item.title, [64, 58, 52, 46, 42], 5);
-  const titleTop = 400;
+  const { size: titleSize, lines: title } = fit(item.title, [60, 54, 48, 44, 40], 5);
+  const titleTop = 370;
 
   let summary = (item.summary || '').trim();
   if (summary && item.title && summary.startsWith(item.title.slice(0, 40))) summary = '';
-  const sumSize = 32;
-  const sum = summary ? wrap(summary, Math.floor(TEXT_W / (sumSize * CHAR_W)), 4) : [];
-  const sumTop = titleTop + title.length * (titleSize + 14) + 40;
+  const sumSize = 30;
+  const sum = summary ? wrap(summary, Math.floor(TEXT_W / (sumSize * CHAR_W)), 3) : [];
+  const sumTop = titleTop + title.length * (titleSize + 12) + 36;
+
+  // блок «що це означає для нас» — новина без наших цифр не має цінності
+  const fmt = v => v.toFixed(2).replace('.', ',');
+  const dp = latest?.avg?.dp;
+  const ch = latest?.avgChange?.dp;
+  const factsBox = dp === undefined ? '' : (() => {
+    const chUp = ch !== undefined && ch > 0.005;
+    const chDown = ch !== undefined && ch < -0.005;
+    const chCol = chUp ? RED : chDown ? AC : MUT;
+    const chTxt = ch === undefined ? ''
+      : chUp ? `▲ +${fmt(ch)}` : chDown ? `▼ −${fmt(Math.abs(ch))}` : '→ 0,00';
+    return `
+  <rect x="70" y="790" width="940" height="120" rx="18" fill="${BG}" stroke="${LINE}" stroke-width="2"/>
+  <text x="106" y="838" font-family="'Courier New',monospace" font-size="26" fill="${MUT}">Дизель в Україні зараз</text>
+  <text x="106" y="890" font-family="'Courier New',monospace" font-size="46" font-weight="bold" fill="${AC}">${fmt(dp)} грн/л</text>
+  <text x="974" y="884" font-family="'Courier New',monospace" font-size="38" font-weight="bold" fill="${chCol}" text-anchor="end">${chTxt}</text>`;
+  })();
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect width="${W}" height="${H}" fill="${BG}"/>
@@ -118,11 +147,11 @@ function newsCardSvg(item) {
 
   ${title.map((l, i) => `<text x="70" y="${titleTop + i * (titleSize + 14)}" font-family="'Courier New',monospace" font-size="${titleSize}" font-weight="bold" fill="${TXT}">${esc(l)}</text>`).join('\n  ')}
 
-  ${sum.map((l, i) => `<text x="70" y="${sumTop + i * (sumSize + 14)}" font-family="'Courier New',monospace" font-size="${sumSize}" fill="${MUT}">${esc(l)}</text>`).join('\n  ')}
+  ${sum.map((l, i) => `<text x="70" y="${sumTop + i * (sumSize + 12)}" font-family="'Courier New',monospace" font-size="${sumSize}" fill="${MUT}">${esc(l)}</text>`).join('\n  ')}
+  ${factsBox}
 
-  <line x1="70" y1="940" x2="1010" y2="940" stroke="${LINE}" stroke-width="1"/>
-  <text x="70" y="1000" font-family="'Courier New',monospace" font-size="30" fill="${MUT}">${esc(item.source ?? '')}</text>
-  <text x="1010" y="1000" font-family="'Courier New',monospace" font-size="30" fill="${AC}" text-anchor="end">diesel-monitor.pp.ua</text>
+  <text x="70" y="1000" font-family="'Courier New',monospace" font-size="28" fill="${MUT}">${esc(item.source ?? '')}</text>
+  <text x="1010" y="1000" font-family="'Courier New',monospace" font-size="28" fill="${AC}" text-anchor="end">diesel-monitor.pp.ua</text>
 </svg>`;
 }
 
@@ -135,9 +164,15 @@ async function buildCard() {
   const { allowed, dir } = allowedImpacts(history);
   const freshAfter = Date.now() - FRESH_HOURS * 3_600_000;
 
-  const pick = (news?.items ?? [])
-    .filter(n => allowed.includes(n.impact) && n.url && !posted.has(n.url) && n.title
-      && n.publishedAt && new Date(n.publishedAt).getTime() >= freshAfter)
+  const fresh = (news?.items ?? []).filter(
+    n => allowed.includes(n.impact) && n.url && !posted.has(n.url) && n.title
+      && n.publishedAt && new Date(n.publishedAt).getTime() >= freshAfter
+  );
+  const risky = fresh.filter(riskyForUa);
+  if (risky.length) console.log(`ig-news: відсіяно як ризиковані для UA: ${risky.length}`);
+
+  const pick = fresh
+    .filter(n => !riskyForUa(n))
     .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
 
   if (!pick) {
@@ -146,8 +181,9 @@ async function buildCard() {
     return;
   }
 
+  const latest = await readJson('latest.json');
   const sharp = (await import('sharp')).default;
-  const jpg = await sharp(Buffer.from(newsCardSvg(pick))).jpeg({ quality: 92 }).toBuffer();
+  const jpg = await sharp(Buffer.from(newsCardSvg(pick, latest))).jpeg({ quality: 92 }).toBuffer();
 
   const today = new Date().toISOString().slice(0, 10);
   const file = `news-${today}.jpg`;
@@ -177,11 +213,28 @@ async function publish() {
   if (!me.id) throw new Error(`me: ${JSON.stringify(me)}`);
 
   const up = pick.impact !== 'down';
+  const latest = await readJson('latest.json');
+  const f = v => v.toFixed(2).replace('.', ',');
+
+  // головне: одразу привʼязуємо світову новину до наших цифр
+  let facts = '';
+  if (latest?.avg?.dp !== undefined) {
+    const ch = latest.avgChange?.dp;
+    const chTxt = ch === undefined || Math.abs(ch) < 0.005 ? ''
+      : ch > 0 ? ` (за тиждень +${f(ch)})` : ` (за тиждень −${f(Math.abs(ch))})`;
+    facts =
+      `📊 Що зараз в Україні:\n` +
+      `Дизель ${f(latest.avg.dp)} грн/л${chTxt}\n` +
+      (latest.avg.a95 !== undefined ? `А-95 ${f(latest.avg.a95)} грн/л\n` : '') +
+      `\n`;
+  }
+
   const caption =
     `${up ? '🔺' : '🟢'} ${pick.title}\n\n` +
-    (pick.summary ? `${pick.summary.slice(0, 400).replace(/\s+\S*$/, '')}…\n\n` : '') +
+    (pick.summary ? `${pick.summary.slice(0, 300).replace(/\s+\S*$/, '')}…\n\n` : '') +
+    facts +
     `Джерело: ${pick.source}\n\n` +
-    `Як це вплинуло на ціни — дивись на diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
+    `Ціни по всіх мережах АЗС і областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
     `#цінинапальне #пальне #АЗС #дизель #Україна`;
 
   const create = await fetch(`${API}/${me.id}/media`, {
