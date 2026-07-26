@@ -6,6 +6,11 @@ on:
     # (ціни Мінфін оновлює ~14:00, тож дані вже свіжі)
     - cron: '0 13 * * 1-5'
   workflow_dispatch:
+    inputs:
+      dry:
+        description: 'Репетиція: перевірити шлях публікації, але не постити'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,6 +47,7 @@ jobs:
       - name: Публікація
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          IG_DRY: ${{ inputs.dry && '1' || '0' }}
         run: node scripts/instagram-post.mjs
 
       - name: Коміт стану посту
