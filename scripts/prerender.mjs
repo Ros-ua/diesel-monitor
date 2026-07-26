@@ -19,6 +19,16 @@ const FUELS = [
   ['gas', 'Автогаз'],
 ];
 
+// Для сторінок «паливо × область» і «паливо × мережа»: слаг у URL і форми слова
+// у заголовках. Люди шукають «ціни на дизель Львівська область», а не «ціни dp».
+const FUEL_SEO = {
+  dp: { slug: 'dyzel', short: 'Дизель', acc: 'дизель', gen: 'дизеля', q: 'дизельне пальне' },
+  a95p: { slug: 'a95-premium', short: 'А-95 преміум', acc: 'бензин А-95 преміум', gen: 'А-95 преміум', q: 'преміум-бензин' },
+  a95: { slug: 'a95', short: 'А-95', acc: 'бензин А-95', gen: 'А-95', q: 'бензин А-95' },
+  a92: { slug: 'a92', short: 'А-92', acc: 'бензин А-92', gen: 'А-92', q: 'бензин А-92' },
+  gas: { slug: 'gaz', short: 'Автогаз', acc: 'автогаз', gen: 'автогазу', q: 'газ для авто' },
+};
+
 // Транслітерація КМУ-2010 для слагів
 const TR = {
   а: 'a', б: 'b', в: 'v', г: 'h', ґ: 'g', д: 'd', е: 'e', є: 'ie', ж: 'zh',
@@ -36,6 +46,10 @@ export function slugify(name) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
+
+// Місцевий відмінок області: «Київська» → «у Київській області».
+// Усі 23 назви — прикметники жіночого роду на -ська/-зька/-цька, тож правило одне.
+const inRegion = name => name.replace(/а$/, 'ій');
 
 const fmt = v => (v === undefined || v === null ? '—' : v.toFixed(2).replace('.', ','));
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -197,6 +211,129 @@ async function main() {
     await writeFile(path.join(dir, 'index.html'), html);
     urls.push(`${SITE}/network/${slug}/`);
   }
+
+  // ── Матриця «паливо × область» ──
+  // Головні конкуренти в пошуку (AUTO.RIA, Мінфін) виграють не даними — дані в
+  // них ті самі, що й у нас, — а кількістю посадкових сторінок під довгі запити
+  // на кшталт «ціни на дизель Полтавська область». Робимо перемноження з тих
+  // самих JSON, що вже зібрані.
+  let matrixCount = 0;
+
+  for (const [region, nets] of Object.entries(regions)) {
+    const rslug = slugify(region);
+
+    for (const [fk, f] of Object.entries(FUEL_SEO)) {
+      const rows = Object.entries(nets)
+        .filter(([, p]) => p[fk] !== undefined)
+        .sort((a, b) => a[1][fk] - b[1][fk]);
+      if (rows.length < 3) continue; // з двох мереж порівняння не вийде
+
+      const prices = rows.map(([, p]) => p[fk]);
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const mid = prices.length % 2
+        ? prices[(prices.length - 1) / 2]
+        : (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2;
+      const [cheapName] = rows[0];
+
+      const table =
+        `<table><tr><th>Мережа АЗС</th><th>${f.short}, грн/л</th></tr>` +
+        rows
+          .map(
+            ([name, p], i) =>
+              `<tr><td><a href="${SITE}/network/${slugify(name)}/">${esc(name)}</a></td>` +
+              `<td>${i === 0 ? '<b>' : ''}${fmt(p[fk])}${i === 0 ? '</b>' : ''}</td></tr>`
+          )
+          .join('') +
+        '</table>';
+
+      const otherFuels = Object.entries(FUEL_SEO)
+        .filter(([k]) => k !== fk)
+        .map(([, o]) => `<a href="${SITE}/region/${rslug}/${o.slug}/">${o.short}</a>`)
+        .join(' ');
+
+      const html = page({
+        title: `Ціни на ${f.acc} — ${region} область, ${date}`,
+        description: `Де дешевший ${f.acc} у ${inRegion(region)} області ${date}: від ${fmt(min)} до ${fmt(max)} грн/л. Найдешевше — ${cheapName}. Порівняння ${rows.length} мереж АЗС, оновлення щодня.`,
+        canonical: `${SITE}/region/${rslug}/${f.slug}/`,
+        h1: `${f.short} — ${region} область`,
+        sub: `${date} · ${rows.length} мереж · від ${fmt(min)} до ${fmt(max)} грн/л`,
+        bodyHtml:
+          `<div class="card">` +
+          `<p>Станом на ${date} ${f.acc} у ${inRegion(region)} області коштує від <b>${fmt(min)}</b> до <b>${fmt(max)}</b> грн/л, ` +
+          `середина ринку — <b>${fmt(mid)}</b> грн/л. Найдешевше зараз у мережі <b>${esc(cheapName)}</b>.</p>` +
+          `${table}</div>` +
+          `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ В ОБЛАСТІ</div>${otherFuels}</div>`,
+        spaLink: `${SITE}/#/region/${encodeURIComponent(region)}`,
+        navHtml: regionNav,
+      });
+
+      const dir = path.join(DIST, 'region', rslug, f.slug);
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, 'index.html'), html);
+      urls.push(`${SITE}/region/${rslug}/${f.slug}/`);
+      matrixCount++;
+    }
+  }
+
+  // ── Матриця «паливо × мережа» ──
+  for (const [network, prices] of Object.entries(networks)) {
+    const nslug = slugify(network);
+
+    for (const [fk, f] of Object.entries(FUEL_SEO)) {
+      if (prices[fk] === undefined) continue;
+
+      const regRows = Object.entries(regions)
+        .map(([region, nets]) => [region, nets[network]?.[fk]])
+        .filter(([, v]) => v !== undefined)
+        .sort((a, b) => a[1] - b[1]);
+      if (regRows.length < 3) continue;
+
+      const vals = regRows.map(([, v]) => v);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+
+      const table =
+        `<table><tr><th>Область</th><th>${f.short}, грн/л</th></tr>` +
+        regRows
+          .map(
+            ([region, v], i) =>
+              `<tr><td><a href="${SITE}/region/${slugify(region)}/${f.slug}/">${esc(region)}</a></td>` +
+              `<td>${i === 0 ? '<b>' : ''}${fmt(v)}${i === 0 ? '</b>' : ''}</td></tr>`
+          )
+          .join('') +
+        '</table>';
+
+      const otherFuels = Object.entries(FUEL_SEO)
+        .filter(([k]) => k !== fk && prices[k] !== undefined)
+        .map(([, o]) => `<a href="${SITE}/network/${nslug}/${o.slug}/">${o.short}</a>`)
+        .join(' ');
+
+      const html = page({
+        title: `${network} ${f.short} — ціна сьогодні, ${date}`,
+        description: `${network}: ${f.acc} ${fmt(prices[fk])} грн/л станом на ${date}. Ціни по ${regRows.length} областях — від ${fmt(min)} до ${fmt(max)} грн/л. Оновлення щодня.`,
+        canonical: `${SITE}/network/${nslug}/${f.slug}/`,
+        h1: `${network} — ${f.short}`,
+        sub: `${date} · ${fmt(prices[fk])} грн/л · ${regRows.length} областей`,
+        bodyHtml:
+          `<div class="card">` +
+          `<p>Ціна на ${f.acc} у мережі <b>${esc(network)}</b> станом на ${date} — <b>${fmt(prices[fk])}</b> грн/л ` +
+          `(медіана по областях присутності). Дешевше за все — ${esc(regRows[0][0])} область, ${fmt(min)} грн/л.</p>` +
+          `${table}</div>` +
+          (otherFuels ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ ЦІЄЇ МЕРЕЖІ</div>${otherFuels}</div>` : ''),
+        spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
+        navHtml: netNav,
+      });
+
+      const dir = path.join(DIST, 'network', nslug, f.slug);
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, 'index.html'), html);
+      urls.push(`${SITE}/network/${nslug}/${f.slug}/`);
+      matrixCount++;
+    }
+  }
+
+  console.log(`матриця: ${matrixCount} сторінок «паливо × область» і «паливо × мережа»`);
 
   // ── SEO-контент головної: вставляємо в #root справжній HTML (H1, ціни, лінки).
   // React при монтуванні його замінить, але Googlebot і користувач бачать одразу —

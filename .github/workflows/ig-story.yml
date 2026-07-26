@@ -1,0 +1,58 @@
+name: Сторіс із цінами (щодня)
+
+# Сторіс живе 24 години й не засмічує профіль — тому виходить СІМ днів на
+# тиждень, зокрема у вихідні, коли пост цін не публікується.
+# Час — ранок: люди дивляться сторіс дорогою на роботу, перед заправкою.
+
+on:
+  schedule:
+    # 05:30 UTC = 08:30 за Києвом
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram
+  cancel-in-progress: false
+
+jobs:
+  story:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # картинку Instagram качає сам за URL — спершу коміт, потім публікація
+      - name: Картка сторіс
+        run: node scripts/instagram-story.mjs --card
+      - name: Коміт картки
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/cards public/data/ig-story-pick.json
+          if ! git diff --cached --quiet; then
+            git commit -m "story: картка $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
+
+      - name: Публікація
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+        run: node scripts/instagram-story.mjs
+
+      - name: Коміт стану
+        if: always()
+        run: |
+          git add public/data/ig-story.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "data: стан сторіс $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin main || true
+            git push
+          fi
