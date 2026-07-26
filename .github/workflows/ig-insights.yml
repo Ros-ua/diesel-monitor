@@ -1,0 +1,22 @@
+name: Зведення Instagram (щотижня)
+
+on:
+  schedule:
+    # понеділок 06:00 UTC = 09:00 за Києвом — підсумок минулого тижня
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Зведення у Telegram
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_OWNER_CHAT: ${{ vars.TG_OWNER_CHAT }}
+        run: node scripts/ig-insights.mjs
