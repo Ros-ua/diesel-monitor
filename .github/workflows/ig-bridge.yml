@@ -1,0 +1,56 @@
+name: Міст Instagram ↔ Telegram
+
+# Кожні 5 хвилин: нові коментарі й особисті повідомлення з Instagram → у Telegram
+# власнику; його реплаї на ці сповіщення → назад в Instagram.
+# Стан живе в окремій гілці ig-bridge-state, щоб не смітити в історії проєкту.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ig-bridge
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      # окрема гілка тільки зі станом — без коду й без історії main
+      - name: Стан моста
+        uses: actions/checkout@v4
+        with:
+          ref: ig-bridge-state
+          path: state
+        continue-on-error: true
+
+      - uses: actions/checkout@v4
+        with:
+          path: code
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Обмін повідомленнями
+        working-directory: state
+        env:
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_OWNER_CHAT: ${{ vars.TG_OWNER_CHAT }}
+        run: node ../code/scripts/ig-bridge.mjs
+
+      - name: Зберегти стан
+        working-directory: state
+        run: |
+          git config user.name "diesel-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "стан моста $(date -u +%H:%M)"
+            git push origin HEAD:ig-bridge-state
+          fi
