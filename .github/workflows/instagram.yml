@@ -1,10 +1,16 @@
 name: Пост в Instagram (будні)
 
+# Пост виходить ОДРАЗУ ПІСЛЯ збору цін, а не за власним розкладом.
+# Причина: GitHub затримує cron на 1–2 години (збір призначений на 12:10 UTC,
+# фактично йде ~13:51). За фіксованим розкладом о 13:00 пост виходив би
+# РАНІШЕ за дані й брав учорашні ціни.
+# Захист від повторів — у самому скрипті: за одну дату постимо лише раз,
+# тож другий збір (18:10) другого посту не зробить.
+
 on:
-  schedule:
-    # 13:00 UTC = 16:00 за Києвом, пн–пт — час найбільшого охоплення в ніші
-    # (ціни Мінфін оновлює ~14:00, тож дані вже свіжі)
-    - cron: '0 13 * * 1-5'
+  workflow_run:
+    workflows: ['Збір цін (щодня)']
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry:
@@ -22,8 +28,16 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
+    # тільки після успішного збору; вихідні пропускаємо — Мінфін їх не оновлює
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
+      # workflow_run стартує на комміті ДО збору — беремо явно свіжий main,
+      # інакше картка згенерується зі старих цін
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
