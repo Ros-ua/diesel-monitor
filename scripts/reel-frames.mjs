@@ -54,13 +54,31 @@ function periodLabel(pts) {
 }
 
 // ── дані ──
-export async function series(fuel, days) {
+export // days — це КАЛЕНДАРНІ ДНІ, не кількість точок. Історія розріджена (Мінфін
+// публікує не щодня), тож «останні 30 точок» легко розтягуються на пів року —
+// і замість свіжого руху виходить графік за 8 місяців.
+const MIN_POINTS = 6; // якщо у вікні замало точок — розширюємо, інакше нема що малювати
+
+async function series(fuel, days) {
   const hist = JSON.parse(await readFile(path.join(DATA_DIR, 'history.json'), 'utf-8'));
   const pts = (hist.days ?? [])
     .filter(d => d.avg?.[fuel] !== undefined)
     .map(d => ({ date: d.date, value: d.avg[fuel] }));
   if (pts.length < 10) throw new Error(`замало даних для ${fuel}`);
-  return pts.slice(-days);
+
+  const lastTime = new Date(pts.at(-1).date).getTime();
+  let window = days;
+  for (let i = 0; i < 6; i++) {
+    const cut = lastTime - window * 86_400_000;
+    const slice = pts.filter(p => new Date(p.date).getTime() >= cut);
+    if (slice.length >= MIN_POINTS) {
+      const span = Math.round((lastTime - new Date(slice[0].date).getTime()) / 86_400_000);
+      console.error(`графік: ${slice.length} точок за ${span} дн (просили ${days})`);
+      return slice;
+    }
+    window *= 2; // у вікні замало даних — беремо ширше
+  }
+  return pts.slice(-MIN_POINTS * 2);
 }
 
 // ── кадр ──
