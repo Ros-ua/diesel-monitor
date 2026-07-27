@@ -96,7 +96,13 @@ async function main() {
 
   await writeFile(
     path.join(DATA_DIR, 'ig-reel.json'),
-    JSON.stringify({ lastFile: meta.file, mediaId: pub.id, postedAt: new Date().toISOString() })
+    JSON.stringify({
+      lastFile: meta.file,
+      lastDataDate: meta.to, // за якими даними знято — щоб не повторити той самий ролик
+      lastFuel: meta.fuel,
+      mediaId: pub.id,
+      postedAt: new Date().toISOString(),
+    })
   );
   console.log(`reel: опубліковано ${meta.file} (media ${pub.id})`);
 }

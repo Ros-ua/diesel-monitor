@@ -1,24 +1,32 @@
-name: Reels в Instagram (щотижня)
+name: Reels в Instagram (за подією)
 
-# Раз на тиждень збираємо вертикальне відео з анімованим графіком ціни
-# й публікуємо як Reels. Музика — CC0 з Openverse (комерція дозволена,
-# атрибуція не потрібна). Трендові звуки Instagram через API недоступні
-# нікому — це обмеження Meta, не наше.
+# Вертикальне відео з анімованим графіком ціни. Виходить НЕ за розкладом, а
+# коли є інфопривід: ціна зрушила ≥1% за тиждень і від попереднього ролика
+# минуло ≥3 дні (див. scripts/reel-check.mjs). У спокійний тиждень графік —
+# майже пряма лінія, такий ролик не додивляються, а Instagram за недодивлені
+# Reels ріже охоплення наступним.
+#
+# Музика — CC0 з Openverse (комерція дозволена, атрибуція не потрібна).
+# Трендові звуки Instagram через API недоступні нікому — обмеження Meta.
 
 on:
   schedule:
-    # четвер 05:30 UTC = 08:30 за Києвом — ранковий пік у ніші
-    - cron: '30 5 * * 4'
+    # перевірка щодня о 08:30 за Києвом; ролик — лише коли умови збіглись
+    - cron: '30 5 * * *'
   workflow_dispatch:
     inputs:
       fuel:
-        description: 'Вид пального (auto — чергування по тижнях; або dp, a95, a95p, a92, gas)'
+        description: 'Пальне (порожньо = обрати за найбільшим рухом ціни)'
         type: string
-        default: 'auto'
+        default: ''
       days:
-        description: 'Скільки точок історії брати'
+        description: 'Скільки точок історії брати (порожньо = 30)'
         type: string
-        default: '180'
+        default: ''
+      force:
+        description: 'Зняти ролик навіть без руху ціни'
+        type: boolean
+        default: false
       dry:
         description: 'Тільки зібрати відео, не публікувати'
         type: boolean
@@ -40,22 +48,37 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # Спершу вирішуємо, чи є взагалі інфопривід. Якщо ні — виходимо ще до
+      # встановлення ffmpeg і npm ci, щоб не палити хвилини даремно.
+      - name: Чи є привід для ролика
+        id: check
+        run: node scripts/reel-check.mjs
+
       - run: npm ci
+        if: steps.check.outputs.run == 'true' || inputs.force
 
       # на ubuntu-24.04 ffmpeg уже не передвстановлений
       - name: Встановити ffmpeg
+        if: steps.check.outputs.run == 'true' || inputs.force
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
 
       - name: Кадри
-        run: node scripts/reel-frames.mjs "${{ inputs.fuel || 'auto' }}" "${{ inputs.days || 180 }}"
+        if: steps.check.outputs.run == 'true' || inputs.force
+        run: |
+          node scripts/reel-frames.mjs \
+            "${{ inputs.fuel || steps.check.outputs.fuel || 'dp' }}" \
+            "${{ inputs.days || steps.check.outputs.days || 30 }}"
 
       # музика не критична: якщо не знайшлась (код 3) — збираємо без звуку
       - name: Музика (CC0)
         id: music
+        if: steps.check.outputs.run == 'true' || inputs.force
         continue-on-error: true
         run: node scripts/reel-music.mjs 12
 
       - name: Збірка відео
+        if: steps.check.outputs.run == 'true' || inputs.force
         run: |
           FILE=$(node -e "console.log(require('./frames/meta.json').file)")
           mkdir -p public/reels
@@ -80,11 +103,13 @@ jobs:
 
       # тримаємо лише 3 останні ролики — відео важке
       - name: Прибрати старі ролики
+        if: steps.check.outputs.run == 'true' || inputs.force
         run: |
           cd public/reels
           ls -1t *.mp4 2>/dev/null | tail -n +4 | xargs -r rm --
 
       - name: Коміт відео
+        if: steps.check.outputs.run == 'true' || inputs.force
         run: |
           git config user.name "diesel-monitor-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -96,7 +121,7 @@ jobs:
           fi
 
       - name: Публікація
-        if: ${{ !inputs.dry }}
+        if: (steps.check.outputs.run == 'true' || inputs.force) && !inputs.dry
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
         run: node scripts/instagram-reel.mjs
