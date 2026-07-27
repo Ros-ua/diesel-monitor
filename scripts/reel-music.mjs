@@ -19,17 +19,23 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'frames');
 
-// запити підібрані під дата-контент: рівний ритм без вокалу
+// Спокійна класика й фортепіано: під цифри й графіки заходить краще за біт,
+// не перебиває зміст і не дратує при повторних переглядах.
 const QUERIES = [
-  'electronic music loop',
-  'techno loop',
-  'minimal beat loop',
-  'electro-pop loop',
-  'synth loop',
+  'classical piano',
+  'piano melody calm',
+  'slow cinematic music',
+  'ambient piano slow',
+  'soft strings emotional',
+  'piano nocturne',
 ];
 
-const MIN_BYTES = 60_000;   // зовсім короткі семпли не годяться
-const MAX_BYTES = 6_000_000;
+// У видачі Freesound поруч із класикою трапляються сирени, крики й «epic horn» —
+// такі назви відсіюємо, бо слухати ролик у стрічці буде неможливо.
+const BAD = /(horn|alarm|siren|scream|horror|thriller|angry|noise|drill|gun|explos|crash|distort|scary|creepy|glitch|beep|buzz)/i;
+
+const MIN_BYTES = 150_000; // короткі семпли на 2 секунди не годяться
+const MAX_BYTES = 8_000_000;
 
 async function search(q) {
   const url = new URL('https://api.openverse.org/v1/audio/');
@@ -63,6 +69,7 @@ async function main() {
         r.license === 'cc0' &&
         r.filetype === 'mp3' &&
         r.url &&
+        !BAD.test(`${r.title ?? ''} ${(r.tags ?? []).map(t => t.name).join(' ')}`) &&
         (r.filesize ?? 0) >= MIN_BYTES &&
         (r.filesize ?? 0) <= MAX_BYTES
     );
