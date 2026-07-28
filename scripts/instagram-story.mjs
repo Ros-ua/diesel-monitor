@@ -141,8 +141,9 @@ async function publish() {
 
   const state = await readJson('ig-story.json', {});
   const today = new Date().toISOString().slice(0, 10);
-  if (state.lastDay === today && process.env.IG_FORCE !== '1')
-    return console.log('story: сьогодні вже публікували');
+  // Обмеження саме на ДАТУ ДАНИХ, а не на календарний день: інакше ранкова
+  // сторіс зі вчорашніми цінами займає слот, і коли вдень приходять свіжі —
+  // нова вже не виходить.
   if (state.lastDataDate === pick.date && process.env.IG_FORCE !== '1')
     return console.log(`story: ціни за ${pick.date} вже виходили — пропускаю`);
 
