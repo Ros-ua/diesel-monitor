@@ -67,6 +67,60 @@ export async function fetchPage(url) {
 const FUEL_COLS = ['a95p', 'a95', 'a92', 'dp', 'gas'];
 
 /**
+ * Парсер таблиці «назва | А95+ | А95 | А92 | ДП | Газ».
+ * З 29.07.2026 Мінфін розділив стару сторінку /detail/ на дві з такою ж
+ * структурою: /tm/ (мережі АЗС) і /reg/ (області). Порожні клітинки в них
+ * трапляються часто — мережа може не продавати якийсь вид пального.
+ */
+function parsePriceTable(html, label) {
+  const out = {};
+
+  for (const tabM of html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/g)) {
+    for (const rowM of tabM[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const cells = [...rowM[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(c => c[1]);
+      if (cells.length < 3) continue;
+
+      const name = cleanText(cells[0]);
+      // шапка й службові рядки
+      if (!name || /Оператор|Область|Вид палива|Ціна/i.test(name)) continue;
+      if (!/[а-яіїєґА-ЯІЇЄҐa-zA-Z]/.test(name)) continue;
+
+      // Вирівнюємо З КІНЦЯ: у /tm/ між назвою і цінами є ще клітинка з лого,
+      // у /reg/ її немає. Останні 5 клітинок — завжди А95+, А95, А92, ДП, Газ.
+      const priceCells = cells.slice(-FUEL_COLS.length);
+      if (priceCells.length < FUEL_COLS.length) continue;
+
+      const prices = {};
+      priceCells.forEach((c, i) => {
+        const v = num(cleanText(c)); // порожня клітинка → null, вид пального відсутній
+        if (v !== null && v > 5 && v < 500) prices[FUEL_COLS[i]] = v;
+      });
+      if (Object.keys(prices).length) out[name] = prices;
+    }
+  }
+
+  if (!Object.keys(out).length) throw new Error(`${label}: таблицю не знайдено`);
+  return out;
+}
+
+/** /ua/markets/fuel/tm/ → { <мережа>: {a95p,a95,a92,dp,gas} } */
+export function parseNetworks(html) {
+  return parsePriceTable(html, 'tm');
+}
+
+/** /ua/markets/fuel/reg/ → { <область>: {a95p,a95,a92,dp,gas} } */
+export function parseRegionAverages(html) {
+  const raw = parsePriceTable(html, 'reg');
+  // назви приходять як «Вінницька», «Дніпро­петровська» (з мʼяким переносом) —
+  // приводимо до вигляду, який уже використовується на сайті
+  const out = {};
+  for (const [name, prices] of Object.entries(raw)) {
+    out[name.replace(/\s*обл\.?$/i, '').trim()] = prices;
+  }
+  return out;
+}
+
+/**
  * Парсить detail-сторінку: повертає { regions: { <область>: { <мережа>: {a95p,a95,a92,dp,gas} } } }
  * Не покладаємось на клас таблиці (він змінювався: 'zebra', 'line'…) — обходимо всі таблиці,
  * всередині сегменти областей розділені рядками з colspan-заголовком «… обл.».

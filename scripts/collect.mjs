@@ -5,11 +5,24 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchPage, parseDetail, parseAverages, nationalNetworks } from './lib/minfin.mjs';
+import {
+  fetchPage,
+  parseDetail,
+  parseAverages,
+  parseNetworks,
+  parseRegionAverages,
+  nationalNetworks,
+} from './lib/minfin.mjs';
 import { collectNews } from './lib/news.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 
+// 29.07.2026 Мінфін розділив сторінку /detail/ (матриця «область × мережа») на
+// дві окремі: /tm/ — ціни по мережах АЗС, /reg/ — середні по областях.
+// Розбивки «яка мережа почому в конкретній області» більше не публікують.
+// /detail/ поки лишаємо в опитуванні — раптом повернуть.
+const TM_URL = 'https://index.minfin.com.ua/ua/markets/fuel/tm/';
+const REG_URL = 'https://index.minfin.com.ua/ua/markets/fuel/reg/';
 const DETAIL_URL = 'https://index.minfin.com.ua/ua/markets/fuel/detail/';
 const AVG_URL = 'https://index.minfin.com.ua/ua/markets/fuel/';
 const NBU_URL = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&json';
@@ -52,7 +65,9 @@ async function main() {
   const today = kyivToday();
   log(`Збір за ${today}${newsOnly ? ' (лише новини)' : ''}`);
 
-  const [detailHtml, avgHtml, nbu, nbuEur, brentJson, news] = await Promise.all([
+  const [tmHtml, regHtml, detailHtml, avgHtml, nbu, nbuEur, brentJson, news] = await Promise.all([
+    newsOnly ? null : retry('minfin-tm', () => fetchPage(TM_URL)),
+    newsOnly ? null : retry('minfin-reg', () => fetchPage(REG_URL)),
     newsOnly ? null : retry('minfin-detail', () => fetchPage(DETAIL_URL)),
     newsOnly ? null : retry('minfin-avg', () => fetchPage(AVG_URL)),
     newsOnly ? null : retry('nbu', () => fetch(NBU_URL).then(r => r.json())),
@@ -65,27 +80,34 @@ async function main() {
     retry('news', () => collectNews()),
   ]);
 
-  // Розбивка по мережах і областях — необовʼязкова. Мінфін 29.07.2026 прибрав
-  // сторінку /detail/ (віддає порожню оболонку без таблиць), і якщо через це
-  // валити весь збір, ми втратимо ще й середні ціни, які досі доступні.
-  let detail = null;
-  if (detailHtml) {
+  // Кожне джерело необовʼязкове: якщо Мінфін знову перебудує сторінки, збір
+  // має вціліти на тому, що лишилось, а не впасти цілком.
+  const tryParse = (html, fn, what) => {
+    if (!html) return null;
     try {
-      detail = parseDetail(detailHtml);
+      return fn(html);
     } catch (e) {
-      log(`УВАГА: розбивку по мережах не розібрано (${e.message}) — беремо лише середні`);
+      log(`УВАГА: ${what} не розібрано (${e.message})`);
+      return null;
     }
-  }
+  };
+
+  const tmNetworks = tryParse(tmHtml, parseNetworks, 'ціни по мережах (/tm/)');
+  const regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
+  // стара матриця «область × мережа» — якщо Мінфін колись поверне /detail/
+  const detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
   const averages = avgHtml ? parseAverages(avgHtml) : null;
   const usd = round2(nbu?.[0]?.rate ?? null);
   const eur = round2(nbuEur?.[0]?.rate ?? null);
   const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
   const brent = round2(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null);
 
-  if (!newsOnly && !averages && !detail)
+  if (!newsOnly && !averages && !detail && !tmNetworks)
     throw new Error('Жодне джерело цін недоступне — історію не оновлено');
 
-  const networks = detail ? nationalNetworks(detail.regions) : null;
+  // Ціни по мережах: пряма таблиця /tm/ надійніша за медіану по областях,
+  // яку доводилось рахувати зі старої матриці. Медіану лишаємо запасним шляхом.
+  const networks = tmNetworks ?? (detail ? nationalNetworks(detail.regions) : null);
 
   // Дата даних — зі сторінки мінфіну (вона оновлюється ~опівдні за Києвом;
   // вранці сторінка ще показує вчорашні ціни, і їх треба писати під вчорашньою датою)
@@ -120,6 +142,8 @@ async function main() {
     const prev = await readJson('latest.json', null);
     const keepNetworks = networks ?? prev?.networks;
     const keepRegions = detail?.regions ?? prev?.regions;
+    // дата матриці «область × мережа» — вона застигла на 28.07.2026,
+    // коли Мінфін прибрав /detail/; середні по областях беремо з /reg/
     const breakdownDate = detail ? pageDate : prev?.breakdownDate ?? prev?.date;
 
     const latest = {
@@ -127,8 +151,10 @@ async function main() {
       collectedAt: new Date().toISOString(),
       ...(averages && { avg: averages.avg, avgChange: averages.change }),
       ...(keepNetworks && { networks: keepNetworks }),
+      // середні ціни по областях — свіже джерело /reg/
+      ...(regionAvg && { regionAvg }),
+      // стара матриця «область × мережа» — заморожена на breakdownDate
       ...(keepRegions && { regions: keepRegions }),
-      // дата розбивки може відставати від дати середніх цін — показуємо чесно
       ...(breakdownDate && { breakdownDate }),
       ...(usd !== null && { usd }),
       ...(eur !== null && { eur }),
@@ -136,9 +162,9 @@ async function main() {
     };
     await writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify(latest));
     log(
-      `latest.json: ${keepNetworks ? Object.keys(keepNetworks).length : 0} мереж, ` +
-        `${keepRegions ? Object.keys(keepRegions).length : 0} областей` +
-        (detail ? '' : ` (розбивка за ${breakdownDate} — джерело недоступне)`)
+      `latest.json: ${keepNetworks ? Object.keys(keepNetworks).length : 0} мереж (${tmNetworks ? '/tm/' : 'зі старих даних'}), ` +
+        `${regionAvg ? Object.keys(regionAvg).length : 0} областей (/reg/)` +
+        (detail ? '' : `, матриця область×мережа заморожена на ${breakdownDate}`)
     );
   }
 
