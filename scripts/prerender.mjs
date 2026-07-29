@@ -113,45 +113,95 @@ ${bodyHtml}
 async function main() {
   const latest = JSON.parse(await readFile(path.join(ROOT, 'public', 'data', 'latest.json'), 'utf-8'));
   const date = uaDate(latest.date);
+  // regionAvg — свіжі середні по областях (/reg/). regions — стара матриця
+  // «область × мережа», Мінфін прибрав її 29.07.2026 і більше не оновлює.
+  const regionAvg = latest.regionAvg ?? {};
   const regions = latest.regions ?? {};
   const networks = latest.networks ?? {};
+  const avg = latest.avg ?? {};
   const urls = [`${SITE}/`];
 
   // ── Сторінки областей ──
-  const regionEntries = Object.keys(regions).sort((a, b) => a.localeCompare(b, 'uk'));
+  const regionEntries = Object.keys(regionAvg).length
+    ? Object.keys(regionAvg).sort((a, b) => a.localeCompare(b, 'uk'))
+    : Object.keys(regions).sort((a, b) => a.localeCompare(b, 'uk'));
   const regionNav =
     '<b style="font-size:9px;letter-spacing:.12em;color:#5a7a72">ІНШІ ОБЛАСТІ</b><br>' +
     regionEntries.map(r => `<a href="${SITE}/region/${slugify(r)}/">${esc(r)}</a>`).join(' ');
 
-  for (const [region, nets] of Object.entries(regions)) {
+  // Рейтинг областей за кожним видом пального: дешевша → номер 1.
+  // Це замінює зниклу таблицю мереж і відповідає на головне питання читача:
+  // «у мене дорожче чи дешевше, ніж у людей?»
+  const rank = {};
+  for (const [k] of FUELS) {
+    const list = Object.entries(regionAvg)
+      .filter(([, p]) => p[k] !== undefined)
+      .sort((a, b) => a[1][k] - b[1][k])
+      .map(([name]) => name);
+    rank[k] = list;
+  }
+
+  for (const region of regionEntries) {
     const slug = slugify(region);
-    const rows = Object.entries(nets)
-      .filter(([, p]) => p.dp !== undefined || p.a95 !== undefined)
-      .sort((a, b) => (a[1].dp ?? 999) - (b[1].dp ?? 999));
+    const prices = regionAvg[region];
+    if (!prices) continue;
+
+    const rows = FUELS.filter(([k]) => prices[k] !== undefined).map(([k, label]) => {
+      const pos = rank[k].indexOf(region) + 1;
+      const total = rank[k].length;
+      const diff = avg[k] !== undefined ? prices[k] - avg[k] : null;
+      return { k, label, price: prices[k], pos, total, diff };
+    });
     if (!rows.length) continue;
 
-    const dpPrices = rows.map(([, p]) => p.dp).filter(v => v !== undefined);
-    const minDp = dpPrices.length ? Math.min(...dpPrices) : null;
-
     const table =
-      `<table><tr><th>Мережа</th>${FUELS.map(([, n]) => `<th>${n}</th>`).join('')}</tr>` +
+      '<table><tr><th>Пальне</th><th>Ціна, грн/л</th><th>Місце</th><th>vs Україна</th></tr>' +
       rows
         .map(
-          ([name, p]) =>
-            `<tr><td><a href="${SITE}/network/${slugify(name)}/">${esc(name)}</a></td>` +
-            FUELS.map(([k]) => `<td>${fmt(p[k])}</td>`).join('') +
-            '</tr>'
+          r =>
+            `<tr><td>${r.label}</td><td><b>${fmt(r.price)}</b></td>` +
+            `<td>${r.pos} з ${r.total}</td>` +
+            `<td>${r.diff === null ? '—' : (r.diff > 0 ? '+' : '') + fmt(r.diff)}</td></tr>`
         )
         .join('') +
       '</table>';
 
+    const dp = rows.find(r => r.k === 'dp');
+    const cheaper = dp ? dp.pos <= Math.ceil(dp.total / 2) : null;
+
+    // сусіди по рейтингу дизеля — дають природну перелінковку
+    const near = dp
+      ? rank.dp
+          .slice(Math.max(0, dp.pos - 3), dp.pos + 2)
+          .filter(r => r !== region)
+          .map(r => `<a href="${SITE}/region/${slugify(r)}/">${esc(r)} ${fmt(regionAvg[r]?.dp)}</a>`)
+          .join(' · ')
+      : '';
+
+    const intro = dp
+      ? `<p>Дизель у ${inRegion(region)} області ${date} коштує <b>${fmt(dp.price)}</b> грн/л — це ` +
+        `<b>${dp.pos} місце з ${dp.total}</b> серед областей України, ` +
+        `${cheaper ? 'дешевше' : 'дорожче'} за середину списку. ` +
+        (dp.diff !== null
+          ? `Відносно середньої по країні — ${dp.diff > 0 ? 'на ' + fmt(dp.diff) + ' грн дорожче' : 'на ' + fmt(Math.abs(dp.diff)) + ' грн дешевше'}.`
+          : '') +
+        `</p>`
+      : '';
+
     const html = page({
       title: `Ціни на пальне — ${region} область: дизель, бензин, автогаз (${date})`,
-      description: `${region} область — ціни на АЗС станом на ${date}: дизель${minDp ? ` від ${fmt(minDp)} грн/л` : ''}, А-95, А-92, автогаз. Порівняння ${rows.length} мереж, оновлюється щодня.`,
+      description:
+        `${region} область, ${date}: ${dp ? `дизель ${fmt(dp.price)} грн/л (${dp.pos} місце з ${dp.total} по Україні)` : 'ціни на пальне'}` +
+        `${prices.a95 !== undefined ? `, А-95 ${fmt(prices.a95)}` : ''}` +
+        `${prices.gas !== undefined ? `, автогаз ${fmt(prices.gas)}` : ''}. Оновлюється щодня.`,
       canonical: `${SITE}/region/${slug}/`,
       h1: `Ціни на пальне — ${region} область`,
-      sub: `оновлено ${date} · ${rows.length} мереж АЗС · грн/л`,
-      bodyHtml: `<div class="card">${table}</div>`,
+      sub: `оновлено ${date} · середні по області · грн/л`,
+      bodyHtml:
+        `<div class="card">${intro}${table}</div>` +
+        (near
+          ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">СУСІДИ В РЕЙТИНГУ ДИЗЕЛЯ</div>${near}</div>`
+          : ''),
       spaLink: `${SITE}/#/region/${encodeURIComponent(region)}`,
       navHtml: regionNav,
     });
@@ -219,51 +269,66 @@ async function main() {
   // самих JSON, що вже зібрані.
   let matrixCount = 0;
 
-  for (const [region, nets] of Object.entries(regions)) {
+  for (const region of regionEntries) {
     const rslug = slugify(region);
+    const rPrices = regionAvg[region];
+    if (!rPrices) continue;
 
     for (const [fk, f] of Object.entries(FUEL_SEO)) {
-      const rows = Object.entries(nets)
-        .filter(([, p]) => p[fk] !== undefined)
-        .sort((a, b) => a[1][fk] - b[1][fk]);
-      if (rows.length < 3) continue; // з двох мереж порівняння не вийде
+      if (rPrices[fk] === undefined) continue;
+      const list = rank[fk] ?? [];
+      if (list.length < 5) continue;
 
-      const prices = rows.map(([, p]) => p[fk]);
-      const min = Math.min(...prices);
-      const max = Math.max(...prices);
-      const mid = prices.length % 2
-        ? prices[(prices.length - 1) / 2]
-        : (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2;
-      const [cheapName] = rows[0];
+      const pos = list.indexOf(region) + 1;
+      const price = rPrices[fk];
+      const cheapest = list[0];
+      const dearest = list[list.length - 1];
+      const diff = avg[fk] !== undefined ? price - avg[fk] : null;
 
+      // показуємо весь рейтинг областей — це і є заміна зниклій таблиці мереж
       const table =
-        `<table><tr><th>Мережа АЗС</th><th>${f.short}, грн/л</th></tr>` +
-        rows
-          .map(
-            ([name, p], i) =>
-              `<tr><td><a href="${SITE}/network/${slugify(name)}/">${esc(name)}</a></td>` +
-              `<td>${i === 0 ? '<b>' : ''}${fmt(p[fk])}${i === 0 ? '</b>' : ''}</td></tr>`
-          )
+        `<table><tr><th>#</th><th>Область</th><th>${f.short}, грн/л</th></tr>` +
+        list
+          .map((r, i) => {
+            const me = r === region;
+            const v = fmt(regionAvg[r][fk]);
+            return (
+              `<tr><td>${i + 1}</td>` +
+              `<td>${me ? `<b>${esc(r)}</b>` : `<a href="${SITE}/region/${slugify(r)}/${f.slug}/">${esc(r)}</a>`}</td>` +
+              `<td>${me ? `<b>${v}</b>` : v}</td></tr>`
+            );
+          })
           .join('') +
         '</table>';
 
       const otherFuels = Object.entries(FUEL_SEO)
-        .filter(([k]) => k !== fk)
+        .filter(([k]) => k !== fk && rPrices[k] !== undefined)
         .map(([, o]) => `<a href="${SITE}/region/${rslug}/${o.slug}/">${o.short}</a>`)
         .join(' ');
 
       const html = page({
         title: `Ціни на ${f.acc} — ${region} область, ${date}`,
-        description: `Де дешевший ${f.acc} у ${inRegion(region)} області ${date}: від ${fmt(min)} до ${fmt(max)} грн/л. Найдешевше — ${cheapName}. Порівняння ${rows.length} мереж АЗС, оновлення щодня.`,
+        description:
+          `${f.short} у ${inRegion(region)} області ${date}: ${fmt(price)} грн/л — ${pos} місце з ${list.length} по Україні.` +
+          (diff !== null
+            ? ` Це на ${fmt(Math.abs(diff))} грн ${diff > 0 ? 'дорожче' : 'дешевше'} за середню по країні.`
+            : '') +
+          ' Рейтинг усіх областей, оновлення щодня.',
         canonical: `${SITE}/region/${rslug}/${f.slug}/`,
         h1: `${f.short} — ${region} область`,
-        sub: `${date} · ${rows.length} мереж · від ${fmt(min)} до ${fmt(max)} грн/л`,
+        sub: `${date} · ${fmt(price)} грн/л · ${pos} місце з ${list.length}`,
         bodyHtml:
           `<div class="card">` +
-          `<p>Станом на ${date} ${f.acc} у ${inRegion(region)} області коштує від <b>${fmt(min)}</b> до <b>${fmt(max)}</b> грн/л, ` +
-          `середина ринку — <b>${fmt(mid)}</b> грн/л. Найдешевше зараз у мережі <b>${esc(cheapName)}</b>.</p>` +
+          `<p>Станом на ${date} ${f.acc} у ${inRegion(region)} області коштує <b>${fmt(price)}</b> грн/л. ` +
+          `Це <b>${pos} місце з ${list.length}</b> серед областей України` +
+          (diff !== null
+            ? `, на ${fmt(Math.abs(diff))} грн ${diff > 0 ? 'дорожче' : 'дешевше'} за середню по країні`
+            : '') +
+          `. Найдешевше — ${esc(cheapest)} (${fmt(regionAvg[cheapest][fk])}), найдорожче — ${esc(dearest)} (${fmt(regionAvg[dearest][fk])}).</p>` +
           `${table}</div>` +
-          `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ В ОБЛАСТІ</div>${otherFuels}</div>`,
+          (otherFuels
+            ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ В ОБЛАСТІ</div>${otherFuels}</div>`
+            : ''),
         spaLink: `${SITE}/#/region/${encodeURIComponent(region)}`,
         navHtml: regionNav,
       });
@@ -283,24 +348,31 @@ async function main() {
     for (const [fk, f] of Object.entries(FUEL_SEO)) {
       if (prices[fk] === undefined) continue;
 
-      const regRows = Object.entries(regions)
-        .map(([region, nets]) => [region, nets[network]?.[fk]])
-        .filter(([, v]) => v !== undefined)
-        .sort((a, b) => a[1] - b[1]);
-      if (regRows.length < 3) continue;
+      // Порівняння з іншими мережами — замість зниклої розбивки по областях.
+      // Питання читача те саме: «а де дешевше?», просто відповідь тепер по мережах.
+      const netRows = Object.entries(networks)
+        .filter(([, p]) => p[fk] !== undefined)
+        .sort((a, b) => a[1][fk] - b[1][fk]);
+      if (netRows.length < 5) continue;
 
-      const vals = regRows.map(([, v]) => v);
+      const pos = netRows.findIndex(([n]) => n === network) + 1;
+      const vals = netRows.map(([, p]) => p[fk]);
       const min = Math.min(...vals);
       const max = Math.max(...vals);
+      const cheapest = netRows[0][0];
 
       const table =
-        `<table><tr><th>Область</th><th>${f.short}, грн/л</th></tr>` +
-        regRows
-          .map(
-            ([region, v], i) =>
-              `<tr><td><a href="${SITE}/region/${slugify(region)}/${f.slug}/">${esc(region)}</a></td>` +
-              `<td>${i === 0 ? '<b>' : ''}${fmt(v)}${i === 0 ? '</b>' : ''}</td></tr>`
-          )
+        `<table><tr><th>#</th><th>Мережа АЗС</th><th>${f.short}, грн/л</th></tr>` +
+        netRows
+          .map(([n, p], i) => {
+            const me = n === network;
+            const v = fmt(p[fk]);
+            return (
+              `<tr><td>${i + 1}</td>` +
+              `<td>${me ? `<b>${esc(n)}</b>` : `<a href="${SITE}/network/${slugify(n)}/${f.slug}/">${esc(n)}</a>`}</td>` +
+              `<td>${me ? `<b>${v}</b>` : v}</td></tr>`
+            );
+          })
           .join('') +
         '</table>';
 
@@ -311,14 +383,14 @@ async function main() {
 
       const html = page({
         title: `${network} ${f.short} — ціна сьогодні, ${date}`,
-        description: `${network}: ${f.acc} ${fmt(prices[fk])} грн/л станом на ${date}. Ціни по ${regRows.length} областях — від ${fmt(min)} до ${fmt(max)} грн/л. Оновлення щодня.`,
+        description: `${network}: ${f.acc} ${fmt(prices[fk])} грн/л станом на ${date} — ${pos} місце з ${netRows.length} мереж. Найдешевше ${cheapest} (${fmt(min)}). Оновлення щодня.`,
         canonical: `${SITE}/network/${nslug}/${f.slug}/`,
         h1: `${network} — ${f.short}`,
-        sub: `${date} · ${fmt(prices[fk])} грн/л · ${regRows.length} областей`,
+        sub: `${date} · ${fmt(prices[fk])} грн/л · ${pos} місце з ${netRows.length}`,
         bodyHtml:
           `<div class="card">` +
-          `<p>Ціна на ${f.acc} у мережі <b>${esc(network)}</b> станом на ${date} — <b>${fmt(prices[fk])}</b> грн/л ` +
-          `(медіана по областях присутності). Дешевше за все — ${esc(regRows[0][0])} область, ${fmt(min)} грн/л.</p>` +
+          `<p>Ціна на ${f.acc} у мережі <b>${esc(network)}</b> станом на ${date} — <b>${fmt(prices[fk])}</b> грн/л. ` +
+          `Це <b>${pos} місце з ${netRows.length}</b> серед мереж АЗС України: найдешевше в ${esc(cheapest)} (${fmt(min)} грн/л), найдорожче — ${fmt(max)} грн/л.</p>` +
           `${table}</div>` +
           (otherFuels ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ ЦІЄЇ МЕРЕЖІ</div>${otherFuels}</div>` : ''),
         spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
@@ -338,7 +410,6 @@ async function main() {
   // ── SEO-контент головної: вставляємо в #root справжній HTML (H1, ціни, лінки).
   // React при монтуванні його замінить, але Googlebot і користувач бачать одразу —
   // головна перестає бути порожнім div для пошуковика. ──
-  const avg = latest.avg ?? {};
   const dpMin = Math.min(
     ...Object.values(networks)
       .map(n => n.dp)
