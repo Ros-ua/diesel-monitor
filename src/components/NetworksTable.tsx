@@ -1,4 +1,4 @@
-// Порівняльна таблиця мереж АЗС (вибране пальне): пошук, фільтр області й ціни, сортування
+// Порівняльна таблиця мереж АЗС (вибране пальне): пошук, фільтр ціни, сортування
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -49,15 +49,19 @@ export default function NetworksTable() {
   const columns = useMemo(() => buildColumns(fuelShort), [fuelShort]);
 
   const [query, setQuery] = useState('');
-  const [region, setRegion] = useState(''); // '' = вся Україна
   const [minStr, setMinStr] = useState('');
   const [maxStr, setMaxStr] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('price');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+  // Назви областей потрібні лише для підказок у пошуку — фільтрувати мережі по
+  // області більше нема з чого: Мінфін прибрав таку розбивку 29.07.2026.
   const regionNames = useMemo(
-    () => Object.keys(latest.regions ?? {}).sort((a, b) => a.localeCompare(b, 'uk')),
-    [latest.regions]
+    () =>
+      Object.keys(latest.regionAvg ?? latest.regions ?? {}).sort((a, b) =>
+        a.localeCompare(b, 'uk')
+      ),
+    [latest.regionAvg, latest.regions]
   );
 
   // Підказка: запит схожий на назву області → лінк на сторінку області
@@ -69,9 +73,7 @@ export default function NetworksTable() {
 
   // Усі рядки для поточного джерела (область або вся Україна), без фільтрів
   const allRows = useMemo<Row[]>(() => {
-    const source: Record<string, NetworkPrices> = region
-      ? (latest.regions?.[region] ?? {})
-      : (latest.networks ?? {});
+    const source: Record<string, NetworkPrices> = latest.networks ?? {};
     const avgPrice = latest.avg?.[fuel];
     const rows: Row[] = [];
     for (const [name, prices] of Object.entries(source)) {
@@ -85,11 +87,11 @@ export default function NetworksTable() {
         d7: changeOver(series, 7)?.abs ?? null,
         d30: changeOver(series, 30)?.abs ?? null,
         vs: avgPrice !== undefined ? price - avgPrice : null,
-        regionCount: region ? undefined : prices.regionCount,
+        regionCount: prices.regionCount,
       });
     }
     return rows;
-  }, [latest, history, region, fuel]);
+  }, [latest, history, fuel]);
 
   // Пошук + фільтр ціни + сортування
   const rows = useMemo(() => {
@@ -159,21 +161,6 @@ export default function NetworksTable() {
           aria-label="Пошук мережі або області"
           className={`${INPUT_CLS} w-48`}
         />
-
-        <select
-          value={region}
-          onChange={e => setRegion(e.target.value)}
-          aria-label="Область"
-          className={INPUT_CLS}
-          style={{ colorScheme: 'dark' }}
-        >
-          <option value="">Вся Україна</option>
-          {regionNames.map(r => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
 
         <div className="flex items-center gap-1">
           <input

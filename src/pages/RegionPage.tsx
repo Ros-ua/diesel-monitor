@@ -1,15 +1,19 @@
-// Сторінка області: мін/макс/середня вибраного пального, таблиця мереж області
-import { useMemo, useState } from 'react';
+// Сторінка області: ціни на все пальне, місце області в рейтингу країни,
+// різниця від середньої та найближчі сусіди за ціною.
+//
+// Раніше тут була таблиця мереж усередині області, але Мінфін прибрав таку
+// розбивку 29.07.2026 (сторінка /detail/). Тепер джерело — середні по областях
+// (/reg/), і сторінка відповідає на те саме питання читача — «у мене дорожче
+// чи дешевше, ніж у людей» — тільки чесно, на наявних даних.
+import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
 import { FUEL_LABELS, FUEL_SHORT, type FuelKey } from '../types';
-import { median, mean } from '../lib/stats';
 import { changeColor, fmtPrice, fmtSigned } from '../lib/format';
 
-/** Колонки таблиці (вибране пальне стає першою сортованою колонкою) */
-const COLS: FuelKey[] = ['dp', 'a95', 'a92', 'gas'];
+const COLS: FuelKey[] = ['dp', 'a95p', 'a95', 'a92', 'gas'];
 
 function StatCard({ label, value, sub, valueClass = 'text-accent', delay = 0 }: {
   label: string;
@@ -37,18 +41,28 @@ export default function RegionPage() {
   const name = id ? decodeURIComponent(id) : '';
   const { latest } = useAppData();
   const { fuel } = useFuel();
-  const [sortAsc, setSortAsc] = useState(true);
 
-  const nets = latest.regions?.[name];
+  const regionAvg = latest.regionAvg;
+  const prices = regionAvg?.[name];
 
-  const rows = useMemo(() => {
-    const list = Object.entries(nets ?? {})
-      .map(([network, prices]) => ({ network, ...prices }))
-      .filter(r => r[fuel] !== undefined);
-    return list.sort((a, b) => (sortAsc ? a[fuel]! - b[fuel]! : b[fuel]! - a[fuel]!));
-  }, [nets, sortAsc, fuel]);
+  // рейтинг усіх областей за вибраним пальним: дешевша → перша
+  const ranking = useMemo(() => {
+    if (!regionAvg) return [];
+    return Object.entries(regionAvg)
+      .flatMap(([region, p]) => {
+        const v = p[fuel];
+        return v === undefined ? [] : [{ region, price: v }];
+      })
+      .sort((a, b) => a.price - b.price);
+  }, [regionAvg, fuel]);
 
-  if (!nets) {
+  const pos = ranking.findIndex(r => r.region === name) + 1;
+  const price = prices?.[fuel];
+  const countryAvg = latest.avg?.[fuel];
+  const vsCountry = price !== undefined && countryAvg !== undefined ? price - countryAvg : null;
+  const isCity = name.startsWith('м.');
+
+  if (!prices) {
     return (
       <div className="card p-5 text-xs text-muted mt-2">
         Дані по цій області відсутні.{' '}
@@ -57,13 +71,8 @@ export default function RegionPage() {
     );
   }
 
-  const fuelPrices = rows.map(r => r[fuel]!);
-  const minRow = rows.length ? rows.reduce((a, b) => (a[fuel]! <= b[fuel]! ? a : b)) : null;
-  const maxRow = rows.length ? rows.reduce((a, b) => (a[fuel]! >= b[fuel]! ? a : b)) : null;
-  const regionMedian = median(fuelPrices);
-  const regionMean = mean(fuelPrices);
-  const isCity = name.startsWith('м.');
-  const otherCols = COLS.filter(k => k !== fuel);
+  const cheapest = ranking[0];
+  const dearest = ranking[ranking.length - 1];
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -79,112 +88,136 @@ export default function RegionPage() {
           {isCity ? name : `${name} область`}
         </h2>
         <div className="text-[10px] text-muted mt-0.5">
-          {FUEL_LABELS[fuel]} · {rows.length} мереж із {FUEL_SHORT[fuel]}
+          {FUEL_LABELS[fuel]} · середні ціни по області
         </div>
       </motion.div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <StatCard
-          label={`Мінімальна ціна ${FUEL_SHORT[fuel]}`}
-          value={minRow ? `${fmtPrice(minRow[fuel])} грн` : '—'}
-          sub={minRow?.network}
+          label={`${FUEL_SHORT[fuel]} в області`}
+          value={price !== undefined ? `${fmtPrice(price)} грн` : '—'}
           valueClass="text-accent"
           delay={0}
         />
         <StatCard
-          label={`Максимальна ціна ${FUEL_SHORT[fuel]}`}
-          value={maxRow ? `${fmtPrice(maxRow[fuel])} грн` : '—'}
-          sub={maxRow?.network}
-          valueClass="text-danger"
+          label="Місце в Україні"
+          value={pos > 0 ? `${pos} з ${ranking.length}` : '—'}
+          sub={pos > 0 ? (pos <= ranking.length / 2 ? 'дешевша половина' : 'дорожча половина') : undefined}
+          valueClass={pos > 0 && pos <= ranking.length / 2 ? 'text-accent' : 'text-danger'}
           delay={0.05}
         />
         <StatCard
-          label="Медіана по області"
-          value={regionMedian !== null ? `${fmtPrice(regionMedian)} грн` : '—'}
-          valueClass="text-accent2"
+          label="vs середня по країні"
+          value={vsCountry !== null ? `${fmtSigned(vsCountry)} грн` : '—'}
+          valueClass={changeColor(vsCountry)}
           delay={0.1}
         />
         <StatCard
-          label="Середня по області"
-          value={regionMean !== null ? `${fmtPrice(regionMean)} грн` : '—'}
-          valueClass="text-purple"
+          label="Найдешевша область"
+          value={cheapest ? `${fmtPrice(cheapest.price)} грн` : '—'}
+          sub={cheapest?.region}
+          valueClass="text-accent2"
           delay={0.15}
         />
       </div>
 
+      {/* Ціни на решту пального в цій області */}
       <motion.div
         className="card p-3"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       >
-        <div className="lbl mb-2">Мережі АЗС — {isCity ? name : `${name} обл.`}</div>
-        {rows.length === 0 ? (
-          <div className="text-xs text-muted">
-            Немає даних по {FUEL_SHORT[fuel]} у цій області
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse" style={{ minWidth: 520 }}>
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="lbl text-left py-1.5 px-2 font-normal">Мережа</th>
-                  <th
-                    className="lbl text-right py-1.5 px-2 font-normal cursor-pointer select-none hover:text-accent"
-                    onClick={() => setSortAsc(a => !a)}
-                    title={`Сортувати за ціною ${FUEL_SHORT[fuel]}`}
+        <div className="lbl mb-2">Усе пальне — {isCity ? name : `${name} обл.`}</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-line">
+                <th className="lbl text-left py-1.5 px-2 font-normal">Пальне</th>
+                <th className="lbl text-right py-1.5 px-2 font-normal">Ціна, грн/л</th>
+                <th className="lbl text-right py-1.5 px-2 font-normal">vs Україна</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COLS.filter(k => prices[k] !== undefined).map(k => {
+                const cAvg = latest.avg?.[k];
+                const d = cAvg !== undefined ? prices[k]! - cAvg : null;
+                return (
+                  <tr key={k} className="border-b border-line/50 hover:bg-accent/5">
+                    <td className="py-1.5 px-2">{FUEL_LABELS[k]}</td>
+                    <td className="py-1.5 px-2 text-right font-bold text-accent">
+                      {fmtPrice(prices[k])}
+                    </td>
+                    <td className={`py-1.5 px-2 text-right ${changeColor(d)}`}>
+                      {d !== null ? fmtSigned(d) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+
+      {/* Рейтинг областей — замінює зниклу таблицю мереж */}
+      <motion.div
+        className="card p-3"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.15 }}
+      >
+        <div className="lbl mb-2">
+          Рейтинг областей — {FUEL_SHORT[fuel]} (від дешевших)
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-line">
+                <th className="lbl text-left py-1.5 px-2 font-normal w-8">#</th>
+                <th className="lbl text-left py-1.5 px-2 font-normal">Область</th>
+                <th className="lbl text-right py-1.5 px-2 font-normal">
+                  {FUEL_SHORT[fuel]}, грн/л
+                </th>
+                <th className="lbl text-right py-1.5 px-2 font-normal">vs ця область</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranking.map((r, i) => {
+                const me = r.region === name;
+                const d = price !== undefined ? r.price - price : null;
+                return (
+                  <tr
+                    key={r.region}
+                    className={`border-b border-line/50 hover:bg-accent/5 ${me ? 'bg-accent/10' : ''}`}
                   >
-                    {FUEL_SHORT[fuel]}, грн/л {sortAsc ? '▲' : '▼'}
-                  </th>
-                  {otherCols.map(k => (
-                    <th key={k} className="lbl text-right py-1.5 px-2 font-normal">
-                      {FUEL_SHORT[k]}
-                    </th>
-                  ))}
-                  <th className="lbl text-right py-1.5 px-2 font-normal">vs медіана</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(r => {
-                  const diff = regionMedian !== null ? r[fuel]! - regionMedian : null;
-                  const cheapest =
-                    minRow !== null && r.network === minRow.network && rows.length > 1;
-                  return (
-                    <tr
-                      key={r.network}
-                      className={`border-b border-line/50 hover:bg-accent/5 ${cheapest ? 'bg-accent/5' : ''}`}
-                    >
-                      <td className="py-1.5 px-2 whitespace-nowrap">
+                    <td className="py-1.5 px-2 text-muted">{i + 1}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap">
+                      {me ? (
+                        <span className="text-accent font-bold">{r.region}</span>
+                      ) : (
                         <Link
-                          to={`/network/${encodeURIComponent(r.network)}`}
-                          className="text-accent hover:underline"
+                          to={`/region/${encodeURIComponent(r.region)}`}
+                          className="hover:text-accent"
                         >
-                          {r.network}
+                          {r.region}
                         </Link>
-                        {cheapest && (
-                          <span className="ml-1.5 text-[8px] border border-accent text-accent rounded px-1 align-middle">
-                            НАЙДЕШЕВША
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-bold">{fmtPrice(r[fuel])}</td>
-                      {otherCols.map(k => (
-                        <td key={k} className="py-1.5 px-2 text-right text-muted">
-                          {fmtPrice(r[k])}
-                        </td>
-                      ))}
-                      <td className={`py-1.5 px-2 text-right ${changeColor(diff)}`}>
-                        {diff !== null ? fmtSigned(diff) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      )}
+                    </td>
+                    <td className={`py-1.5 px-2 text-right ${me ? 'font-bold text-accent' : ''}`}>
+                      {fmtPrice(r.price)}
+                    </td>
+                    <td className={`py-1.5 px-2 text-right ${changeColor(d)}`}>
+                      {me ? '—' : d !== null ? fmtSigned(d) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <div className="text-[9px] text-muted mt-2">
-          Історичні графіки по областях накопичуються з часом
+          Найдорожче: {dearest?.region} — {fmtPrice(dearest?.price)} грн/л.
+          Ціни по мережах АЗС — на головній сторінці.
         </div>
       </motion.div>
     </div>

@@ -52,22 +52,33 @@ export default function RegionsPanel() {
   const { latest } = useAppData();
   const { fuel } = useFuel();
 
+  // regionAvg — середні по областях просто від Мінфіну (/reg/). Стару матрицю
+  // «область × мережа» він прибрав 29.07.2026, тож медіану більше не рахуємо;
+  // latest.regions лишається запасним шляхом для старих знімків даних.
   const stats = useMemo<RegionStat[]>(() => {
     const out: RegionStat[] = [];
-    for (const [name, networks] of Object.entries(latest.regions ?? {})) {
-      const prices = Object.values(networks)
-        .map(p => p[fuel])
-        .filter((v): v is number => v !== undefined);
-      const med = median(prices);
-      if (med !== null) out.push({ name, med, count: prices.length });
+
+    if (latest.regionAvg) {
+      for (const [name, prices] of Object.entries(latest.regionAvg)) {
+        const v = prices[fuel];
+        if (v !== undefined) out.push({ name, med: v, count: 1 });
+      }
+    } else {
+      for (const [name, networks] of Object.entries(latest.regions ?? {})) {
+        const prices = Object.values(networks)
+          .map(p => p[fuel])
+          .filter((v): v is number => v !== undefined);
+        const med = median(prices);
+        if (med !== null) out.push({ name, med, count: prices.length });
+      }
     }
     return out.sort((a, b) => a.med - b.med);
-  }, [latest.regions, fuel]);
+  }, [latest.regionAvg, latest.regions, fuel]);
 
-  const missing = useMemo(
-    () => ALL_REGIONS.filter(name => !(latest.regions && name in latest.regions)),
-    [latest.regions]
-  );
+  const missing = useMemo(() => {
+    const have = latest.regionAvg ?? latest.regions;
+    return ALL_REGIONS.filter(name => !(have && name in have));
+  }, [latest.regionAvg, latest.regions]);
 
   if (!stats.length) return null;
 

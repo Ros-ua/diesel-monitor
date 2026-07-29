@@ -100,16 +100,19 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
 
   const fuels = FUEL_ORDER.filter(f => net[f] !== undefined);
 
-  const regionRows = useMemo(() => {
-    const netMedian = net[fuel];
-    return Object.entries(latest.regions ?? {})
-      .flatMap(([region, regionNets]) => {
-        const price = regionNets[name]?.[fuel];
+  // Раніше тут була ціна цієї мережі по областях, але Мінфін прибрав таку
+  // розбивку 29.07.2026. Показуємо натомість порівняння з іншими мережами —
+  // питання читача те саме: «а де дешевше?».
+  const rivalRows = useMemo(() => {
+    const mine = net[fuel];
+    return Object.entries(latest.networks ?? {})
+      .flatMap(([rival, prices]) => {
+        const price = prices[fuel];
         if (price === undefined) return [];
-        return [{ region, price, diff: netMedian !== undefined ? price - netMedian : null }];
+        return [{ rival, price, diff: mine !== undefined ? price - mine : null }];
       })
       .sort((a, b) => a.price - b.price);
-  }, [latest.regions, name, net, fuel]);
+  }, [latest.networks, net, fuel]);
 
   const option = useMemo<EChartsCoreOption>(
     () => ({
@@ -279,35 +282,42 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
       >
-        <div className="lbl mb-2">Ціна {FUEL_SHORT[fuel]} по областях</div>
-        {regionRows.length === 0 ? (
-          <div className="text-xs text-muted">Дані по областях відсутні</div>
+        <div className="lbl mb-2">{FUEL_SHORT[fuel]} — порівняння з іншими мережами</div>
+        {rivalRows.length === 0 ? (
+          <div className="text-xs text-muted">Дані по мережах відсутні</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="border-b border-line">
-                  <th className="lbl text-left py-1.5 px-2 font-normal">Область</th>
+                  <th className="lbl text-left py-1.5 px-2 font-normal">Мережа</th>
                   <th className="lbl text-right py-1.5 px-2 font-normal">
                     {FUEL_SHORT[fuel]}, грн/л
                   </th>
-                  <th className="lbl text-right py-1.5 px-2 font-normal">vs медіана мережі</th>
+                  <th className="lbl text-right py-1.5 px-2 font-normal">vs {name}</th>
                 </tr>
               </thead>
               <tbody>
-                {regionRows.map(r => (
-                  <tr key={r.region} className="border-b border-line/50 hover:bg-accent/5">
+                {rivalRows.map(r => (
+                  <tr
+                    key={r.rival}
+                    className={`border-b border-line/50 hover:bg-accent/5 ${r.rival === name ? 'bg-accent/10' : ''}`}
+                  >
                     <td className="py-1.5 px-2 whitespace-nowrap">
-                      <Link
-                        to={`/region/${encodeURIComponent(r.region)}`}
-                        className="hover:text-accent"
-                      >
-                        {r.region}
-                      </Link>
+                      {r.rival === name ? (
+                        <span className="text-accent font-medium">{r.rival}</span>
+                      ) : (
+                        <Link
+                          to={`/network/${encodeURIComponent(r.rival)}`}
+                          className="hover:text-accent"
+                        >
+                          {r.rival}
+                        </Link>
+                      )}
                     </td>
                     <td className="py-1.5 px-2 text-right text-accent">{fmtPrice(r.price)}</td>
                     <td className={`py-1.5 px-2 text-right ${changeColor(r.diff)}`}>
-                      {fmtSigned(r.diff)}
+                      {r.rival === name ? '—' : fmtSigned(r.diff)}
                     </td>
                   </tr>
                 ))}
