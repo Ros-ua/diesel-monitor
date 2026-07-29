@@ -65,7 +65,17 @@ async function main() {
     retry('news', () => collectNews()),
   ]);
 
-  const detail = detailHtml ? parseDetail(detailHtml) : null;
+  // Розбивка по мережах і областях — необовʼязкова. Мінфін 29.07.2026 прибрав
+  // сторінку /detail/ (віддає порожню оболонку без таблиць), і якщо через це
+  // валити весь збір, ми втратимо ще й середні ціни, які досі доступні.
+  let detail = null;
+  if (detailHtml) {
+    try {
+      detail = parseDetail(detailHtml);
+    } catch (e) {
+      log(`УВАГА: розбивку по мережах не розібрано (${e.message}) — беремо лише середні`);
+    }
+  }
   const averages = avgHtml ? parseAverages(avgHtml) : null;
   const usd = round2(nbu?.[0]?.rate ?? null);
   const eur = round2(nbuEur?.[0]?.rate ?? null);
@@ -104,18 +114,32 @@ async function main() {
 
   // ── latest.json: повний поточний зріз ──
   if (detail || averages) {
+    // Якщо розбивки цього разу немає — лишаємо попередню разом із датою, коли
+    // її востаннє бачили. Інакше 200+ SEO-сторінок і карта мереж просто зникнуть
+    // із сайту, а це гірше за трохи застарілі цифри з чесною позначкою.
+    const prev = await readJson('latest.json', null);
+    const keepNetworks = networks ?? prev?.networks;
+    const keepRegions = detail?.regions ?? prev?.regions;
+    const breakdownDate = detail ? pageDate : prev?.breakdownDate ?? prev?.date;
+
     const latest = {
       date: pageDate,
       collectedAt: new Date().toISOString(),
       ...(averages && { avg: averages.avg, avgChange: averages.change }),
-      ...(networks && { networks }),
-      ...(detail && { regions: detail.regions }),
+      ...(keepNetworks && { networks: keepNetworks }),
+      ...(keepRegions && { regions: keepRegions }),
+      // дата розбивки може відставати від дати середніх цін — показуємо чесно
+      ...(breakdownDate && { breakdownDate }),
       ...(usd !== null && { usd }),
       ...(eur !== null && { eur }),
       ...(brent !== null && { brent }),
     };
     await writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify(latest));
-    log(`latest.json: ${networks ? Object.keys(networks).length : 0} мереж, ${detail ? Object.keys(detail.regions).length : 0} областей`);
+    log(
+      `latest.json: ${keepNetworks ? Object.keys(keepNetworks).length : 0} мереж, ` +
+        `${keepRegions ? Object.keys(keepRegions).length : 0} областей` +
+        (detail ? '' : ` (розбивка за ${breakdownDate} — джерело недоступне)`)
+    );
   }
 
   // ── factors.json: дописуємо сьогоднішні Brent/USD, щоб панель чинників не відставала ──
