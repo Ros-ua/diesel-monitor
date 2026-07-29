@@ -9,7 +9,10 @@
   --color-warn: #ffb347;
   --color-danger: #ff5f5f;
   --color-purple: #aa88ff;
-  --color-muted: #5a7a72;
+  /* Був #5a7a72 — контраст 3.8 на картці, нижче норми WCAG AA (4.5).
+     Ним набрані дрібні підписи 9–10px, тож на сонці читалось погано.
+     #6d8f86 дає 5.0 і виглядає так само приглушено. */
+  --color-muted: #6d8f86;
   --color-line: rgba(0, 210, 170, 0.15);
   --color-grid: rgba(0, 210, 170, 0.05);
   --font-mono: 'Courier New', Courier, monospace;

@@ -104,7 +104,7 @@ export default function RegionsPanel() {
               <div className={`text-[15px] font-bold leading-tight ${colorFor(i)}`}>
                 {fmtPrice(r.med)}
               </div>
-              <div className="text-[8px] text-muted/60">
+              <div className="text-[9px] text-muted">
                 {r.count} {networksWord(r.count)}
               </div>
             </Link>
@@ -116,7 +116,7 @@ export default function RegionsPanel() {
             <div className="border border-transparent rounded px-2 py-1.5 opacity-60">
               <div className="text-[10px] text-muted truncate">{name}</div>
               <div className="text-[15px] font-bold leading-tight text-muted">—</div>
-              <div className="text-[8px] text-muted/60">немає даних</div>
+              <div className="text-[9px] text-muted">немає даних</div>
             </div>
           </motion.div>
         ))}

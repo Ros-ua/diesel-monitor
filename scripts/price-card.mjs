@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
-const BG = '#0a0e12', SURF = '#111820', AC = '#00d2aa', RED = '#ff5f5f', MUT = '#5a7a72', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
+const BG = '#0a0e12', SURF = '#111820', AC = '#00d2aa', RED = '#ff5f5f', MUT = '#6d8f86', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
 const fmt = v => v.toFixed(2).replace('.', ',');
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

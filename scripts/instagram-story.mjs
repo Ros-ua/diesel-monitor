@@ -24,7 +24,7 @@ const API = 'https://graph.instagram.com/v23.0';
 
 const W = 1080, H = 1920;
 const BG = '#0a0e12', SURF = '#111820', AC = '#00d2aa', RED = '#ff5f5f';
-const MUT = '#5a7a72', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
+const MUT = '#6d8f86', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
 
 const token = process.env.INSTAGRAM_TOKEN;
 const fmt = v => v.toFixed(2).replace('.', ',');

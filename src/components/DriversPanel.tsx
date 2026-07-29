@@ -10,7 +10,7 @@ function StrengthDots({ strength, dir }: { strength: Driver['strength']; dir: Dr
   const color = dir === 'up' ? 'text-danger' : 'text-accent';
   return (
     <span
-      className="text-[9px] tracking-[0.2em] whitespace-nowrap shrink-0"
+      className="text-[10px] tracking-[0.2em] whitespace-nowrap shrink-0"
       aria-label={`сила ${strength} з 3`}
       title={`сила чинника: ${strength} з 3`}
     >
@@ -41,7 +41,7 @@ function DriverRow({ driver, index }: { driver: Driver; index: number }) {
         <span className="text-xs text-[#e0ede9] flex-1 min-w-0 leading-tight">{driver.label}</span>
         <StrengthDots strength={driver.strength} dir={driver.dir} />
         <span
-          className={`text-[9px] shrink-0 transition-transform duration-200 ${open ? 'rotate-180 text-accent' : 'text-muted/60'}`}
+          className={`text-[10px] shrink-0 transition-transform duration-200 ${open ? 'rotate-180 text-accent' : 'text-muted'}`}
           aria-hidden="true"
         >
           ▾
@@ -92,7 +92,7 @@ export default function DriversPanel() {
         )}
       </div>
 
-      <div className="text-[9px] text-muted/60 mt-2 pt-2">
+      <div className="text-[10px] text-muted mt-2 pt-2">
         Автоматичний аналіз чинників · Brent, курс НБУ, динаміка цін, новини · клік по чиннику —
         пояснення
       </div>

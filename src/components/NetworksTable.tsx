@@ -250,15 +250,15 @@ export default function NetworksTable() {
                       {row.name}
                     </Link>
                     {row.regionCount !== undefined && (
-                      <span className="text-muted text-[9px] ml-1">({row.regionCount} обл.)</span>
+                      <span className="text-muted text-[10px] ml-1">({row.regionCount} обл.)</span>
                     )}
                     {row.name === cheapest && (
-                      <span className="text-[8px] border border-accent text-accent rounded px-1 ml-1.5 align-middle">
+                      <span className="text-[9px] border border-accent text-accent rounded px-1 ml-1.5 align-middle">
                         НАЙДЕШЕВША
                       </span>
                     )}
                     {row.name === dearest && (
-                      <span className="text-[8px] border border-danger text-danger rounded px-1 ml-1.5 align-middle">
+                      <span className="text-[9px] border border-danger text-danger rounded px-1 ml-1.5 align-middle">
                         НАЙДОРОЖЧА
                       </span>
                     )}

@@ -215,7 +215,7 @@ export default function RegionPage() {
             </tbody>
           </table>
         </div>
-        <div className="text-[9px] text-muted mt-2">
+        <div className="text-[10px] text-muted mt-2">
           Найдорожче: {dearest?.region} — {fmtPrice(dearest?.price)} грн/л.
           Ціни по мережах АЗС — на головній сторінці.
         </div>

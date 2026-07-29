@@ -60,7 +60,7 @@ export default function ForecastPanel() {
               {DIRECTION_VIEW[fc.direction].text}
             </span>
             <span
-              className={`border rounded px-1.5 py-0.5 text-[9px] tracking-[0.1em] ${CONFIDENCE_CLS[fc.confidence]}`}
+              className={`border rounded px-1.5 py-0.5 text-[10px] tracking-[0.1em] ${CONFIDENCE_CLS[fc.confidence]}`}
             >
               довіра: {fc.confidence}
             </span>
@@ -74,7 +74,7 @@ export default function ForecastPanel() {
         </>
       )}
 
-      <div className="text-[9px] text-muted/70 border-t border-line/50 pt-1.5 mt-2 leading-relaxed">
+      <div className="text-[10px] text-muted border-t border-line/50 pt-1.5 mt-2 leading-relaxed">
         Оцінка тренду за історичними даними. Не є гарантією майбутніх цін і не є фінансовою
         порадою.
       </div>

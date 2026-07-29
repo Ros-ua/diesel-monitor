@@ -168,7 +168,7 @@ export default function PriceChart() {
         <>
           <Chart option={option} className="h-72 md:h-80" notMerge />
           {hasSparse && (
-            <div className="text-[9px] text-muted mt-1.5">
+            <div className="text-[10px] text-muted mt-1.5">
               · розріджені історичні точки (архів) з&apos;єднано лінією
             </div>
           )}

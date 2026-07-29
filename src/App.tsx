@@ -29,7 +29,7 @@ function Header({ updatedAt }: { updatedAt: string | null }) {
         <span className="hidden md:inline">⚡ У вас електрокар? Де зарядка поряд</span>
         <span className="md:hidden">⚡ Зарядки EV</span>
       </Link>
-      <span className="text-[10px] text-muted/70 hidden sm:block flex-1 text-right">
+      <span className="text-[10px] text-muted hidden sm:block flex-1 text-right">
         {updatedAt ? `ціни: ${timeAgo(updatedAt)}` : 'завантаження…'}
       </span>
     </header>

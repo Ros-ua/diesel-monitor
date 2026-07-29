@@ -21,7 +21,7 @@ const FRAMES_DIR = path.join(ROOT, 'frames');
 const W = 1080, H = 1920, FPS = 24, SEC = 12;
 const TOTAL = FPS * SEC;
 const BG = '#0a0e12', SURF = '#111820', AC = '#00d2aa', RED = '#ff5f5f';
-const MUT = '#5a7a72', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
+const MUT = '#6d8f86', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
 
 const FUEL_NAMES = { dp: 'дизель', a95: 'бензин А-95', a95p: 'бензин А-95+', a92: 'бензин А-92', gas: 'автогаз' };
 const fmt = v => v.toFixed(2).replace('.', ',');

@@ -24,7 +24,7 @@ function Stat({ label, value, color, unit, sub, subColor = 'text-muted', title }
       <div className={`text-[15px] font-bold leading-tight tabular-nums ${color}`}>
         {value}
         {unit && value !== '—' && (
-          <span className="text-[9px] font-normal text-muted ml-1">{unit}</span>
+          <span className="text-[10px] font-normal text-muted ml-1">{unit}</span>
         )}
       </div>
       {sub && <div className={`text-[10px] leading-tight truncate ${subColor}`}>{sub}</div>}
@@ -47,7 +47,7 @@ export default function AnalyticsPanel() {
     >
       <div className="flex items-baseline justify-between gap-2 mb-2">
         <div className="lbl">Аналітика</div>
-        <div className="text-[8px] text-muted whitespace-nowrap">{FUEL_SHORT[fuel]}</div>
+        <div className="text-[9px] text-muted whitespace-nowrap">{FUEL_SHORT[fuel]}</div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">

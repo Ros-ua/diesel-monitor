@@ -24,10 +24,10 @@ export default function NewsWidget() {
         <div className="lbl">
           НОВИНИ РИНКУ
           {news && news.items.length > 0 && (
-            <span className="text-muted/70 ml-1.5">({news.items.length})</span>
+            <span className="text-muted ml-1.5">({news.items.length})</span>
           )}
         </div>
-        <div className="text-[8px] text-muted whitespace-nowrap">
+        <div className="text-[9px] text-muted whitespace-nowrap">
           🔴 тисне вгору · 🟢 вниз · 🟡 нейтрально
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function NewsWidget() {
                 <div className="text-[10px] text-muted line-clamp-2 mt-0.5">
                   {item.summary}
                 </div>
-                <div className="text-[9px] text-muted/70 mt-0.5">
+                <div className="text-[10px] text-muted mt-0.5">
                   {item.source}
                   {ago ? ` · ${ago}` : ''}
                 </div>
@@ -72,7 +72,7 @@ export default function NewsWidget() {
         </div>
       )}
 
-      <div className="text-[9px] text-muted/60 mt-2">
+      <div className="text-[10px] text-muted mt-2">
         Автодобірка за ключовими словами · ЕП, УНІАН, Укрінформ, РБК-Україна · архів накопичується
       </div>
     </motion.div>

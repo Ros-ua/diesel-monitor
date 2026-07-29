@@ -134,7 +134,7 @@ export default function FuelTickers() {
             </div>
 
             {/* Рядок 4: зміна за тиждень */}
-            <div className={`text-[9px] leading-tight opacity-85 ${changeColor(t.week?.abs)}`}>
+            <div className={`text-[10px] leading-tight opacity-85 ${changeColor(t.week?.abs)}`}>
               {t.week
                 ? `тижд ${arrow(t.week.abs)} ${fmtSigned(t.week.abs)} (${fmtPct(t.week.pct)})`
                 : 'тижд —'}
