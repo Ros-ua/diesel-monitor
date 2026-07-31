@@ -77,29 +77,14 @@ jobs:
         continue-on-error: true
         run: node scripts/reel-music.mjs 12
 
+      # Кадри тепер прозорі — фон під них підкладає reel-compose.mjs: відео з
+      # assets/reel-bg (чергується по тижнях) або суцільний колір, якщо кліпів нема.
       - name: Збірка відео
         if: steps.check.outputs.run == 'true' || inputs.force
         run: |
-          FILE=$(node -e "console.log(require('./frames/meta.json').file)")
           mkdir -p public/reels
-          if [ -f frames/music.mp3 ]; then
-            # -shortest обріже музику по відео; луп на випадок короткого треку
-            ffmpeg -y -loglevel error \
-              -framerate 24 -i frames/f%04d.png \
-              -stream_loop -1 -i frames/music.mp3 \
-              -c:v libx264 -pix_fmt yuv420p -profile:v high -level 4.0 \
-              -c:a aac -b:a 128k -ar 44100 \
-              -af "afade=t=out:st=10:d=2" \
-              -shortest -movflags +faststart \
-              "public/reels/$FILE"
-          else
-            ffmpeg -y -loglevel error \
-              -framerate 24 -i frames/f%04d.png \
-              -c:v libx264 -pix_fmt yuv420p -profile:v high -level 4.0 \
-              -movflags +faststart \
-              "public/reels/$FILE"
-          fi
-          ls -lh "public/reels/$FILE"
+          node scripts/reel-compose.mjs
+          ls -lh public/reels
 
       # тримаємо лише 3 останні ролики — відео важке
       - name: Прибрати старі ролики

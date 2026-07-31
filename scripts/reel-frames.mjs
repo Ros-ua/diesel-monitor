@@ -117,8 +117,27 @@ export function frameSvg(pts, frame, fuel) {
   const fuelName = FUEL_NAMES[fuel] ?? fuel;
   const period = periodLabel(pts);
 
+  // Суцільного фону НЕМАЄ: кадр лишається прозорим, під нього ffmpeg підкладає
+  // відео з assets/reel-bg (див. reel-compose.mjs), а як кліпів нема — суцільний BG.
+  // Замість заливки — градієнтні затемнення там, де лежить текст: світлі ділянки
+  // відео інакше з'їдають дрібні написи.
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <rect width="${W}" height="${H}" fill="${BG}"/>
+  <defs>
+    <linearGradient id="scrimTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${BG}" stop-opacity="0.96"/>
+      <stop offset="0.72" stop-color="${BG}" stop-opacity="0.86"/>
+      <stop offset="1" stop-color="${BG}" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="scrimBot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${BG}" stop-opacity="0"/>
+      <stop offset="0.4" stop-color="${BG}" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="${BG}" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+  <!-- 860 — щоб під затемнення потрапили не лише заголовки, а й дрібні «грн/л»
+       та дата: на світлих ділянках відео сірий MUT інакше не читається -->
+  <rect x="0" y="0" width="${W}" height="860" fill="url(#scrimTop)"/>
+  <rect x="0" y="1440" width="${W}" height="${H - 1440}" fill="url(#scrimBot)"/>
   <circle cx="96" cy="120" r="11" fill="${AC}"/>
   <text x="124" y="132" font-family="'Courier New',monospace" font-size="38" letter-spacing="7" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>
 
@@ -127,11 +146,16 @@ export function frameSvg(pts, frame, fuel) {
   <text x="90" y="450" font-family="'Courier New',monospace" font-size="62" font-weight="bold" fill="${AC}">${esc(period)}</text>
 
   <g opacity="${hookOp.toFixed(3)}">
-    <rect x="0" y="520" width="${W}" height="${H - 520}" fill="${BG}"/>
+    <!-- не суцільна заливка, а напівпрозора «шторка»: гачок читається, але відео видно -->
+    <rect x="0" y="520" width="${W}" height="${H - 520}" fill="${BG}" opacity="0.3"/>
     <text x="90" y="900" font-family="'Courier New',monospace" font-size="110" font-weight="bold" fill="${TXT}">Спойлер:</text>
     <text x="90" y="1030" font-family="'Courier New',monospace" font-size="110" font-weight="bold" fill="${up ? RED : AC}">${up ? '+' : '−'}${fmt(Math.abs(pct))}%</text>
     <text x="90" y="1140" font-family="'Courier New',monospace" font-size="44" fill="${MUT}">дивись, як це було</text>
   </g>
+
+  <!-- Підкладка під графік. У гачку її нема (там відео має бути видно на повну),
+       а щойно гачок згасає — проявляється, інакше лінія й підписи тонуть у кадрі. -->
+  <rect x="0" y="820" width="${W}" height="640" fill="${BG}" opacity="${((1 - hookOp) * 0.42).toFixed(3)}"/>
 
   <text x="90" y="640" font-family="'Courier New',monospace" font-size="150" font-weight="bold" fill="${AC}">${fmt(cur.value)}</text>
   <text x="${90 + 150 * fmt(cur.value).length * 0.62}" y="640" font-family="'Courier New',monospace" font-size="46" fill="${MUT}">грн/л</text>
