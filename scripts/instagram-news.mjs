@@ -9,6 +9,7 @@
 
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -201,8 +202,10 @@ function newsCardSvg(item, latest, fuel) {
   })();
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${AURORA_DEFS}
   <rect width="${W}" height="${H}" fill="${BG}"/>
   <rect x="24" y="24" width="${W - 48}" height="${H - 48}" rx="24" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
+  ${AURORA_RECTS}
   <circle cx="78" cy="92" r="9" fill="${AC}"/>
   <text x="100" y="102" font-family="'Courier New',monospace" font-size="32" letter-spacing="6" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>
 
@@ -237,8 +240,10 @@ function cheapestCardSvg(latest, fuel) {
   const [y, m, d] = (latest.date ?? '').split('-');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${AURORA_DEFS}
   <rect width="${W}" height="${H}" fill="${BG}"/>
   <rect x="24" y="24" width="${W - 48}" height="${H - 48}" rx="24" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
+  ${AURORA_RECTS}
   <circle cx="78" cy="92" r="9" fill="${AC}"/>
   <text x="100" y="102" font-family="'Courier New',monospace" font-size="32" letter-spacing="6" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>
   <text x="1010" y="102" font-family="'Courier New',monospace" font-size="28" fill="${MUT}" text-anchor="end">${d}.${m}.${y}</text>

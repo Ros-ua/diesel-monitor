@@ -15,6 +15,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -79,8 +80,10 @@ function storySvg(latest, spark) {
     .join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${AURORA_DEFS}
   <rect width="${W}" height="${H}" fill="${BG}"/>
   <rect x="40" y="40" width="${W - 80}" height="${H - 80}" rx="32" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
+  ${AURORA_RECTS}
 
   <circle cx="100" cy="150" r="12" fill="${AC}"/>
   <text x="130" y="163" font-family="'Courier New',monospace" font-size="40" letter-spacing="7" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>

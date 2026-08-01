@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const BG = '#0a0e12', SURF = '#111820', AC = '#00d2aa', RED = '#ff5f5f', MUT = '#6d8f86', TXT = '#e0ede9', LINE = 'rgba(0,210,170,0.15)';
@@ -50,8 +51,10 @@ export function makeCardSvg(latest, spark = []) {
   const factors = [usd, eur, brent].filter(Boolean).join('   ·   ');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    ${AURORA_DEFS}
     <rect width="${W}" height="${H}" fill="${BG}"/>
     <rect x="24" y="24" width="${W - 48}" height="${H - 48}" rx="24" fill="${SURF}" stroke="${LINE}" stroke-width="2"/>
+    ${AURORA_RECTS}
     <circle cx="78" cy="92" r="9" fill="${AC}"/>
     <text x="100" y="102" font-family="'Courier New',monospace" font-size="32" letter-spacing="6" fill="${AC}">ДИЗЕЛЬ МОНІТОР <tspan fill="${MUT}">UA</tspan></text>
     <text x="1010" y="102" font-family="'Courier New',monospace" font-size="30" fill="${MUT}" text-anchor="end">${d}.${m}.${y}</text>
