@@ -29,6 +29,25 @@ body {
   min-height: 100vh;
 }
 
+/* Фон-термінал: мʼяке бірюзове світіння згори, синє знизу, ледь помітна
+   сітка координат і віньєтка по краях. Чистий CSS — нуль байтів трафіку,
+   нуль впливу на швидкість. Шар лежить під контентом (z-index: -1),
+   тож на контраст тексту не впливає: картки мають власний фон. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    /* «аврора»: бірюза згори-зліва, синь знизу-справа, крапля фіолету.
+       Варіант обраний зі скріншотів 01.08.2026 (А=сітка+віньєтка, В=сітка+градієнт). */
+    radial-gradient(ellipse 85% 60% at 15% -12%, rgba(0, 210, 170, 0.16), transparent 55%),
+    radial-gradient(ellipse 75% 55% at 92% 112%, rgba(0, 170, 255, 0.13), transparent 58%),
+    radial-gradient(ellipse 55% 40% at 75% 25%, rgba(170, 136, 255, 0.09), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 30% 85%, rgba(0, 210, 170, 0.06), transparent 60%);
+}
+
 /* Тонкі скролбари, як у Speedtest */
 * {
   scrollbar-width: thin;
