@@ -74,7 +74,9 @@ async function main() {
   const meta = JSON.parse(await readFile(path.join(FRAMES_DIR, 'meta.json'), 'utf-8'));
   const out = path.join(OUT_DIR, meta.file);
   const music = path.join(FRAMES_DIR, 'music.mp3');
+  const voice = path.join(FRAMES_DIR, 'voice.wav');
   const hasMusic = await exists(music);
+  const hasVoice = await exists(voice);
   const bg = await pickBg();
 
   const args = ['-y', '-loglevel', 'error'];
@@ -99,10 +101,25 @@ async function main() {
   args.push('-framerate', String(FPS), '-i', path.join(FRAMES_DIR, 'f%04d.png'));
   filters.push('[bed][1:v]overlay=format=auto:shortest=1,format=yuv420p[v]');
 
+  // Аудіо: голос диктора поверх пригашеної музики. Коли голосу немає —
+  // музика на повну, як і раніше. Порядок входів: 0=фон, 1=кадри, 2=музика, 3=голос.
   if (hasMusic) args.push('-stream_loop', '-1', '-i', music);
+  if (hasVoice) args.push('-i', voice);
+
+  if (hasMusic && hasVoice) {
+    filters.push(
+      `[2:a]volume=0.22,atrim=duration=${SEC},afade=t=out:st=${SEC - 2}:d=2[mus]`,
+      `[3:a]adelay=700|700,apad=whole_dur=${SEC}[voi]`,
+      `[mus][voi]amix=inputs=2:normalize=0[a]`
+    );
+  } else if (hasMusic) {
+    filters.push(`[2:a]atrim=duration=${SEC},afade=t=out:st=${SEC - 2}:d=2[a]`);
+  } else if (hasVoice) {
+    filters.push(`[2:a]adelay=700|700,apad=whole_dur=${SEC}[a]`);
+  }
 
   args.push('-filter_complex', filters.join(';'), '-map', '[v]');
-  if (hasMusic) args.push('-map', '2:a', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-af', 'afade=t=out:st=10:d=2');
+  if (hasMusic || hasVoice) args.push('-map', '[a]', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100');
 
   args.push(
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.0',
@@ -111,7 +128,10 @@ async function main() {
   );
 
   await run(ffmpeg, args);
-  console.error(`фон: ${bg ? path.basename(bg) : 'суцільний (кліпів немає)'}, музика: ${hasMusic ? 'є' : 'нема'}`);
+  console.error(
+    `фон: ${bg ? path.basename(bg) : 'суцільний (кліпів немає)'}, ` +
+      `музика: ${hasMusic ? 'є' : 'нема'}, голос: ${hasVoice ? 'є' : 'нема'}`
+  );
   console.log(out);
 }
 

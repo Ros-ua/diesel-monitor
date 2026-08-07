@@ -77,6 +77,15 @@ jobs:
         continue-on-error: true
         run: node scripts/reel-music.mjs 12
 
+      # голос диктора з цифр ролика (Gemini TTS, безкоштовний ключ флоту);
+      # збій некритичний — ролик вийде без голосу
+      - name: Озвучка (Gemini TTS)
+        if: steps.check.outputs.run == 'true' || inputs.force
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/reel-voice.mjs
+
       # Кадри тепер прозорі — фон під них підкладає reel-compose.mjs: відео з
       # assets/reel-bg (чергується по тижнях) або суцільний колір, якщо кліпів нема.
       - name: Збірка відео
