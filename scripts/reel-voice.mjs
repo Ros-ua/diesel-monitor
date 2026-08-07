@@ -82,7 +82,9 @@ async function main() {
     }
   );
   if (!res.ok) {
+    const body = await res.text().catch(() => '');
     console.error(`озвучка: TTS відповів ${res.status} — ролик буде без голосу`);
+    console.error(`озвучка: ${body.slice(0, 300).replace(/\s+/g, ' ')}`);
     process.exit(3);
   }
   const data = await res.json();
