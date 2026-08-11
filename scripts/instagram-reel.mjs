@@ -9,6 +9,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickHashtags } from './lib/hashtags.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -51,7 +52,7 @@ function caption(meta, music) {
     `Ціни по всіх мережах АЗС і областях, графіки й прогноз —\n` +
     `diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
     (music?.title ? `Музика: ${music.title} — ${music.creator} (CC0)\n\n` : '') +
-    `#цінинапальне #дизель #бензин #АЗС #Україна`
+    pickHashtags({ fuel: meta.fuel, change: meta.diff })
   );
 }
 

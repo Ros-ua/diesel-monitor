@@ -10,6 +10,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
+import { pickHashtags, standoutRegion } from './lib/hashtags.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -361,15 +362,18 @@ async function publish() {
       .map(([name, v]) => ({ name, price: v[pick.fuel] }))
       .sort((a, b) => a.price - b.price)
       .slice(0, 3);
-    const tag = label.toLowerCase().replace(/[^а-яїієґa-z0-9]/gi, '');
+    const region = standoutRegion(latest?.regionAvg, pick.fuel);
     caption =
       `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
       top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
       (latest?.avg?.[pick.fuel] !== undefined
         ? `\n\nСередня по Україні: ${f(latest.avg[pick.fuel])} грн/л`
         : '') +
+      (region && latest?.regionAvg?.[region]?.[pick.fuel] !== undefined
+        ? `\nДешевше за все — ${region} область: ${f(latest.regionAvg[region][pick.fuel])} грн/л`
+        : '') +
       `\n\nЦіни по всіх мережах і областях — ${SITE_LINE}\n\n` +
-      `#цінинапальне #пальне #АЗС #${tag} #Україна`;
+      pickHashtags({ fuel: pick.fuel, region });
   } else {
     const up = pick.impact !== 'down';
 
@@ -398,7 +402,7 @@ async function publish() {
       facts +
       `Джерело: ${pick.source}\n\n` +
       `Ціни по всіх мережах АЗС і областях — ${SITE_LINE}\n\n` +
-      `#цінинапальне #пальне #АЗС #дизель #Україна`;
+      pickHashtags({ fuel, news: true });
   }
 
   const create = await fetch(`${API}/${me.id}/media`, {

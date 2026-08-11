@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
+import { pickHashtags, standoutRegion } from './lib/hashtags.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -206,13 +207,21 @@ function caption(latest) {
     .filter(([, p]) => p.dp !== undefined)
     .sort((a, b) => a[1].dp - b[1].dp)[0];
 
+  // область-сюжет дає вузький хештег: у ньому менша конкуренція, ніж у #пальне
+  const region = standoutRegion(latest.regionAvg, 'dp');
+  const regionLine =
+    region && latest.regionAvg?.[region]?.dp !== undefined
+      ? `Найдешевший дизель по областях: ${region} — ${f(latest.regionAvg[region].dp)} грн/л\n\n`
+      : '';
+
   return (
     `⛽ Ціни на пальне в Україні · ${d}.${m}.${y}\n\n` +
     `${rows}\n\n` +
-    (cheap ? `Найдешевший дизель: ${cheap[0]} — ${f(cheap[1].dp)} грн/л\n\n` : '') +
+    (cheap ? `Найдешевша мережа: ${cheap[0]} — ${f(cheap[1].dp)} грн/л\n` : '') +
+    regionLine +
     `Гортай карусель: усі види пального, де дешевше, ціни по областях і динаміка за місяць.\n\n` +
     `Повні дані по 36 мережах і 23 областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
-    `#цінинапальне #пальне #дизель #АЗС #Україна`
+    pickHashtags({ fuel: 'dp', region, change: latest.avgChange?.dp })
   );
 }
 
