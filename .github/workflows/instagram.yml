@@ -44,32 +44,35 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Instagram САМ качає картинку за URL, тож спершу кладемо файл у репозиторій
-      - name: Картка дня
-        run: node scripts/instagram-post.mjs --card
-      - name: Коміт картки
+      # Instagram САМ качає картинки за URL, тож спершу кладемо файли в репозиторій.
+      # З 11.08.2026 денний пост — карусель із 5 слайдів замість однієї картки:
+      # гортання тримає людину в пості довше, а час перегляду — головний сигнал
+      # для алгоритму. Одиночна картка лишається у price-card.mjs для Telegram.
+      - name: Слайди каруселі
+        run: node scripts/instagram-carousel.mjs --cards
+      - name: Коміт слайдів
         run: |
           git config user.name "diesel-monitor-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add public/cards
+          git add public/cards public/data/ig-carousel-pick.json
           if ! git diff --cached --quiet; then
-            git commit -m "ig: картка $(date -u +%Y-%m-%d)"
+            git commit -m "ig: слайди каруселі $(date -u +%Y-%m-%d)"
             git pull --rebase --autostash origin main || true
             git push
           fi
 
       - name: Публікація
+        if: ${{ !inputs.dry }}
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
-          IG_DRY: ${{ inputs.dry && '1' || '0' }}
-        run: node scripts/instagram-post.mjs
+        run: node scripts/instagram-carousel.mjs
 
       - name: Коміт стану посту
         if: always()
         run: |
-          git add public/data/ig-post.json 2>/dev/null || true
+          git add public/data/ig-carousel.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
-            git commit -m "data: стан ig-посту $(date -u +%Y-%m-%d)"
+            git commit -m "data: стан каруселі $(date -u +%Y-%m-%d)"
             git pull --rebase --autostash origin main || true
             git push
           fi

@@ -19,10 +19,22 @@ import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 
-const MIN_MOVE_PCT = 1.0;  // менший рух — не інфопривід
-const MIN_GAP_DAYS = 3;    // максимум ~2 ролики на тиждень
+// Пороги послаблено 11.08.2026: Reels — єдиний формат, який Instagram показує
+// НЕ підписникам, тож для акаунта-початківця це головний канал росту. Старі
+// пороги (1% + 3 дні) давали 0–2 ролики на тиждень, часто нуль у спокійний
+// тиждень. Тепер ~3–4: рух від 0.5% АБО «тихий» інфопривід (див. нижче).
+const MIN_MOVE_PCT = 0.5;  // менший рух — шукаємо інший привід
+const MIN_GAP_DAYS = 2;    // максимум ~3-4 ролики на тиждень
 const WEEK_DAYS = 8;       // вікно «тиждень» з запасом: історія розріджена
 const GRAPH_POINTS = 30;   // рух показуємо в контексті місяця, а не 5 днів
+
+// Коли ціна стоїть, ролик усе одно є про що зняти — беремо довший горизонт,
+// де рух точно є. Чергуються за днем, щоб не повторювати той самий сюжет.
+const QUIET_ANGLES = [
+  { key: 'month', days: 30, why: 'огляд місяця' },
+  { key: 'quarter', days: 90, why: 'огляд кварталу' },
+  { key: 'year', days: 365, why: 'рік у цінах' },
+];
 
 const FUELS = ['dp', 'a95p', 'a95', 'a92', 'gas'];
 const NAMES = { dp: 'дизель', a95p: 'А-95+', a95: 'А-95', a92: 'А-92', gas: 'автогаз' };
@@ -80,20 +92,41 @@ async function decide(out) {
       moves.map(m => `${NAMES[m.k]} ${m.pct > 0 ? '+' : ''}${m.pct.toFixed(1)}%`).join(', ')
   );
 
-  if (moved < MIN_MOVE_PCT) {
-    return out(false, `найбільший рух ${moved.toFixed(1)}% — менше за поріг ${MIN_MOVE_PCT}%`);
+  if (moved >= MIN_MOVE_PCT) {
+    return out(true, `${NAMES[top.k]} ${top.pct > 0 ? '+' : ''}${top.pct.toFixed(1)}% за тиждень`, top.k);
   }
 
-  return out(true, `${NAMES[top.k]} ${top.pct > 0 ? '+' : ''}${top.pct.toFixed(1)}% за тиждень`, top.k);
+  // ── тиждень спокійний: беремо довший горизонт, там рух є завжди ──
+  // День року як лічильник: сюжети чергуються, той самий не повториться підряд.
+  const dayNo = Math.floor(Date.now() / 86_400_000);
+  for (let i = 0; i < QUIET_ANGLES.length; i++) {
+    const angle = QUIET_ANGLES[(dayNo + i) % QUIET_ANGLES.length];
+    const cut = new Date(last.date).getTime() - angle.days * 86_400_000;
+    const far = days.find(d => new Date(d.date).getTime() >= cut);
+    if (!far?.avg?.dp || far.date === last.date) continue;
+
+    const pct = ((last.avg.dp - far.avg.dp) / far.avg.dp) * 100;
+    if (Math.abs(pct) < 2) continue; // навіть на довгому вікні рух нікчемний
+
+    console.log(`тиждень спокійний (${moved.toFixed(1)}%) — беремо ${angle.why}`);
+    return out(
+      true,
+      `${angle.why}: дизель ${pct > 0 ? '+' : ''}${pct.toFixed(1)}% за ${angle.days} дн`,
+      'dp',
+      angle.days
+    );
+  }
+
+  return out(false, `рух ${moved.toFixed(1)}% і на довгих вікнах немає сюжету`);
 }
 
 async function main() {
-  const out = async (run, why, fuel = 'dp') => {
+  const out = async (run, why, fuel = 'dp', days = GRAPH_POINTS) => {
     console.log(run ? `✅ знімаємо Reels: ${why}` : `⏸ пропускаємо: ${why}`);
     if (process.env.GITHUB_OUTPUT) {
       await appendFile(
         process.env.GITHUB_OUTPUT,
-        `run=${run}\nfuel=${fuel}\ndays=${GRAPH_POINTS}\nreason=${why}\n`
+        `run=${run}\nfuel=${fuel}\ndays=${days}\nreason=${why}\n`
       );
     }
   };
