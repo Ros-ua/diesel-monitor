@@ -329,13 +329,35 @@ async function publish() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ creation_id: carousel.id, access_token: token }),
   }).then(r => r.json());
-  if (!pub.id) throw new Error(`publish: ${JSON.stringify(pub)}`);
+
+  // Instagram інколи ВІДДАЄ помилку, але пост усе одно створює
+  // («Application request limit reached» 22.08 — обидві каруселі вийшли).
+  // Якщо повірити відповіді на слово й не записати стан, наступний запуск
+  // опублікує те саме вдруге. Тому при помилці перевіряємо фактом: чи не
+  // з'явився щойно новий пост в акаунті.
+  let mediaId = pub.id;
+  if (!mediaId) {
+    console.log(`carousel: publish відповів помилкою — перевіряю, чи пост усе-таки вийшов`);
+    await new Promise(r => setTimeout(r, 5000));
+    const recent = await fetch(
+      `${API}/${me.id}/media?fields=id,timestamp,media_type&limit=3&access_token=${token}`
+    ).then(r => r.json()).catch(() => null);
+    const fresh = (recent?.data ?? []).find(
+      m => m.media_type === 'CAROUSEL_ALBUM' && Date.now() - new Date(m.timestamp).getTime() < 5 * 60_000
+    );
+    if (fresh) {
+      mediaId = fresh.id;
+      console.log(`carousel: пост усе-таки опубліковано (media ${mediaId}) — помилка була хибною`);
+    } else {
+      throw new Error(`publish: ${JSON.stringify(pub)}`);
+    }
+  }
 
   await writeFile(
     path.join(DATA_DIR, 'ig-carousel.json'),
-    JSON.stringify({ lastDate: pick.date, mediaId: pub.id, slides: pick.files.length, postedAt: new Date().toISOString() })
+    JSON.stringify({ lastDate: pick.date, mediaId, slides: pick.files.length, postedAt: new Date().toISOString() })
   );
-  console.log(`carousel: опубліковано ${pick.files.length} слайдів за ${pick.date} (media ${pub.id})`);
+  console.log(`carousel: опубліковано ${pick.files.length} слайдів за ${pick.date} (media ${mediaId})`);
 }
 
 if (process.argv[1]?.endsWith('instagram-carousel.mjs')) {
