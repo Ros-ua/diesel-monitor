@@ -327,7 +327,12 @@ async function buildCard() {
   await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ ...pick, file, fuel }));
   console.log(`ig-news: пальне в блоці — ${FUEL_LABELS[fuel] ?? '—'} (минулого разу ${FUEL_LABELS[state.lastFuel] ?? '—'})`);
 
-  const old = (await readdir(CARDS_DIR)).filter(f => f.startsWith('news-')).sort().slice(0, -7);
+  // прибираємо і news-, і cheap-: раніше фільтр ловив лише news-,
+  // тому картки «де найдешевше» лишались у репозиторії назавжди
+  const old = (await readdir(CARDS_DIR))
+    .filter(f => f.startsWith('news-') || f.startsWith('cheap-'))
+    .sort()
+    .slice(0, -7);
   for (const f of old) await unlink(path.join(CARDS_DIR, f));
 
   console.log(`ig-news: картка ${file} для «${pick.title.slice(0, 60)}»`);
@@ -433,7 +438,7 @@ async function publish() {
   console.log(`ig-news: опубліковано «${pick.title.slice(0, 60)}» (media ${pub.id})`);
 }
 
-// запускаємо лише при прямому виклику — instagram-post.mjs імпортує звідси waitReady
+// запускаємо лише при прямому виклику — instagram-carousel.mjs імпортує звідси waitReady
 if (process.argv[1]?.endsWith('instagram-news.mjs')) {
   const mode = process.argv[2];
   (mode === '--card' ? buildCard() : publish()).catch(e => {

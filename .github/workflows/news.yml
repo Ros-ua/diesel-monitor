@@ -28,7 +28,7 @@ jobs:
           node-version: 22
       - name: Збір новин
         run: node scripts/collect.mjs --news-only
-      # Постинг у канал винесено в окремий tg-post.yml (кожні 30 хв, по 1 новині)
+      # Постинг у канал винесено в окремий tg-post.yml (кожні 2 години, по 1 новині)
       - name: Коміт оновлених новин
         id: commit
         run: |

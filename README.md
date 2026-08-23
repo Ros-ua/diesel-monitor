@@ -31,6 +31,45 @@
 `scripts/collect.mjs`, комітить оновлені `public/data/*.json` і передеплоює сайт.
 Національна ціна мережі = медіана по областях присутності.
 
+## Публікації
+
+Репозиторій не лише збирає дані — він сам веде соцмережі. Усе крутиться в
+GitHub Actions, ноутбук не потрібен.
+
+**Instagram** ([@diesel.monitor.ua](https://www.instagram.com/diesel.monitor.ua/)):
+
+| Що | Коли | Скрипт |
+|---|---|---|
+| Карусель цін (5 слайдів) | після оновлення цін, будні | `instagram-carousel.mjs` |
+| Новина дня або «де найдешевше» | щодня 19:00 | `instagram-news.mjs` |
+| Сторіс із цінами | після оновлення цін | `instagram-story.mjs` |
+| Reels: анімований графік, відеофон, голос диктора | за подією: рух ціни ≥0.5% | `reel-*.mjs` |
+| Тижневе зведення власнику | понеділок | `ig-insights.mjs` |
+
+**Telegram** ([@diesel_monitor_ua](https://t.me/diesel_monitor_ua)): картка цін після
+збору + до 4 новин на добу (`telegram-post.mjs`, `telegram-news.mjs`).
+
+Особливості, які варто знати:
+
+- **Пости прив'язані до збору даних, а не до годинника.** GitHub затримує cron
+  на 1–2 години, тож фіксований розклад публікував би вчорашні ціни. Тригер —
+  `workflow_run` від збору.
+- **Токен Meta продовжується сам** щомісяця (`ig-refresh.yml`). Потрібен секрет
+  `GH_PAT` — вбудований `GITHUB_TOKEN` не вміє перезаписувати секрети.
+- **Озвучка Reels** — Gemini TTS; картинки й відео цей ключ не дає, відеофони
+  генеруються руками в Google Flow і лежать у `assets/reel-bg/`.
+- **Фільтри контенту:** воєнні новини в Instagram не публікуються (модерація
+  Meta), українські джерела мають пріоритет над світовими.
+- **Міст коментарів** (`ig-bridge.mjs`) написаний, але розклад вимкнено: до
+  App Review Meta не віддає ані директ, ані тексти коментарів.
+
+## SEO
+
+313 статичних сторінок генерує `prerender.mjs` після збірки: області, мережі
+АЗС і перемноження «паливо × область», «паливо × мережа». Google не індексує
+hash-маршрути SPA, тому кожна сторінка — справжній HTML із цінами дня.
+Sitemap збирається там же; у Search Console подано ресурс **діапазону домену**.
+
 ## Стек
 
 React 19 · TypeScript (strict) · Vite · Tailwind CSS v4 · Apache ECharts · Framer Motion ·
@@ -44,6 +83,16 @@ npm run dev        # локальний дев-сервер
 npm run build      # прод-збірка у dist/
 npm run collect    # разовий збір поточних цін
 npm run backfill   # бекфіл історії (Wayback + НБУ + Brent), інкрементний
+```
+
+Публікації (потрібен `INSTAGRAM_TOKEN`; без нього скрипти просто пропускають крок):
+
+```bash
+node scripts/instagram-carousel.mjs --cards   # згенерувати слайди каруселі
+node scripts/instagram-carousel.mjs           # опублікувати
+node scripts/instagram-story.mjs --card       # картка сторіс
+node scripts/reel-frames.mjs dp 30            # кадри Reels: пальне, вікно в днях
+node scripts/reel-check.mjs                   # чи є привід знімати ролик
 ```
 
 Додати новий вид пального: ключі `FuelKey` у `src/types.ts` вже покривають
