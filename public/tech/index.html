@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Как устроен Дизель Монітор: репозиторий, который сам собирает цены на топливо и ведёт Instagram и Telegram без сервера.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<title>Дизель Монітор изнутри</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --bg: #f1f5f4;
+    --surface: #ffffff;
+    --surface-2: #e6eeec;
+    --text: #0b1a17;
+    --muted: #54736b;
+    --line: rgba(0, 120, 100, 0.18);
+    --line-soft: rgba(0, 120, 100, 0.09);
+    --accent: #007a66;
+    --c-site: #0069ad;
+    --c-ig: #9a5600;
+    --c-tg: #5f45c9;
+    --c-warn: #b3372a;
+    --shadow: 0 1px 2px rgba(6, 40, 34, .06), 0 8px 24px -12px rgba(6, 40, 34, .18);
+
+    --mono: 'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #080c10;
+      --surface: #111820;
+      --surface-2: #0d141a;
+      --text: #dfece8;
+      --muted: #7fa199;
+      --line: rgba(0, 210, 170, 0.20);
+      --line-soft: rgba(0, 210, 170, 0.09);
+      --accent: #00d2aa;
+      --c-site: #38b6ff;
+      --c-ig: #ffb347;
+      --c-tg: #b79cff;
+      --c-warn: #ff6b6b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #080c10;
+    --surface: #111820;
+    --surface-2: #0d141a;
+    --text: #dfece8;
+    --muted: #7fa199;
+    --line: rgba(0, 210, 170, 0.20);
+    --line-soft: rgba(0, 210, 170, 0.09);
+    --accent: #00d2aa;
+    --c-site: #38b6ff;
+    --c-ig: #ffb347;
+    --c-tg: #b79cff;
+    --c-warn: #ff6b6b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .9);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  .col { max-width: 660px; }
+
+  /* ── шапка ───────────────────────────────────────────── */
+
+  header {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 48px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5.2vw, 46px);
+    font-weight: 600;
+    letter-spacing: -.02em;
+    line-height: 1.12;
+    text-wrap: balance;
+    margin: 0 0 20px;
+  }
+
+  h1 .dim { color: var(--muted); font-weight: 400; }
+
+  .lead {
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--text);
+    max-width: 620px;
+    margin: 0 0 28px;
+  }
+
+  .surfaces {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .surface-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 7px 14px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color .15s, transform .15s;
+  }
+
+  .surface-chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .surface-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .surface-chip .kind { color: var(--muted); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* ── секции ──────────────────────────────────────────── */
+
+  section { margin: 0 0 60px; }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  h2 + .h2sub {
+    font-family: var(--sans);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    line-height: 1.3;
+    text-wrap: balance;
+    margin: 20px 0 16px;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 32px 0 8px;
+  }
+
+  p { margin: 0 0 16px; max-width: 660px; }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  strong { font-weight: 600; }
+
+  ul { margin: 0 0 16px; padding-left: 0; list-style: none; max-width: 660px; }
+
+  ul li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 9px;
+  }
+
+  ul li::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: .62em;
+    width: 6px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  /* ── цифры ───────────────────────────────────────────── */
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 28px 0 0;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 18px 18px 16px;
+  }
+
+  .stat .n {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    display: block;
+    line-height: 1.1;
+  }
+
+  .stat .l {
+    font-size: 12.5px;
+    color: var(--muted);
+    display: block;
+    margin-top: 5px;
+    line-height: 1.4;
+  }
+
+  /* ── фигуры ──────────────────────────────────────────── */
+
+  /* цвета внутри SVG: var() не работает в presentation-атрибутах,
+     поэтому задаём их правилами, а в разметке ставим классы */
+  svg .f-site { fill: var(--c-site); }
+  svg .f-ig   { fill: var(--c-ig); }
+  svg .f-tg   { fill: var(--c-tg); }
+  svg .f-warn { fill: var(--c-warn); }
+  svg .s-site { stroke: var(--c-site); }
+  svg .s-ig   { stroke: var(--c-ig); }
+  svg .s-tg   { stroke: var(--c-tg); }
+  svg .s-warn { stroke: var(--c-warn); }
+
+  figure { margin: 32px 0; padding: 0; }
+
+  .figscroll { overflow-x: auto; }
+
+  figure svg {
+    display: block;
+    width: 100%;
+    min-width: 680px;
+    max-width: 100%;
+    height: auto;
+    color: var(--muted);
+  }
+
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 14px;
+    max-width: 660px;
+    line-height: 1.55;
+  }
+
+  /* ── таблицы ─────────────────────────────────────────── */
+
+  .tablewrap { overflow-x: auto; margin: 24px 0; border: 1px solid var(--line); }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-size: 14px;
+    background: var(--surface);
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  td.mono, th.mono { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    line-height: 1.5;
+  }
+
+  .tag-ig { color: var(--c-ig); }
+  .tag-tg { color: var(--c-tg); }
+  .tag-site { color: var(--c-site); }
+  .tag-data { color: var(--accent); }
+
+  /* ── врезки ──────────────────────────────────────────── */
+
+  .note {
+    border-left: 2px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 20px;
+    margin: 24px 0;
+    max-width: 660px;
+  }
+
+  .note p:last-child { margin-bottom: 0; }
+
+  .note .nlabel {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .note.warn { border-left-color: var(--c-warn); }
+  .note.warn .nlabel { color: var(--c-warn); }
+
+  /* ── день системы ────────────────────────────────────── */
+
+  .day { border-top: 1px solid var(--line); margin-top: 24px; }
+
+  .slot {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 20px;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+
+  .slot .t {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .slot .t small { display: block; color: var(--muted); font-size: 10.5px; font-weight: 400; letter-spacing: .04em; }
+
+  .slot .d strong { display: block; font-size: 15px; margin-bottom: 2px; }
+  .slot .d span { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ── решения ─────────────────────────────────────────── */
+
+  .decisions { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 24px; }
+
+  .decision { background: var(--surface); padding: 20px 22px; }
+
+  .decision h4 {
+    font-family: var(--sans);
+    font-size: 15.5px;
+    font-weight: 600;
+    margin: 0 0 7px;
+  }
+
+  .decision p { font-size: 14px; margin: 0; color: var(--muted); line-height: 1.6; }
+  .decision p strong { color: var(--text); font-weight: 500; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 640px) {
+    header { padding-top: 48px; }
+    .slot { grid-template-columns: 1fr; gap: 4px; }
+    .wrap { padding: 0 18px 64px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Техническая карта проекта</p>
+  <h1>Дизель Монітор<br><span class="dim">репозиторий, который сам ведёт соцсети</span></h1>
+  <p class="lead">
+    Проект отслеживает цены на топливо в Украине. Но интересен он не дашбордом, а тем,
+    что у него <strong>нет сервера, нет базы данных и нет бэкенда</strong> — и при этом
+    он ежедневно публикует посты в Instagram и Telegram сам, без участия человека.
+    Всё живёт внутри GitHub-репозитория.
+  </p>
+  <div class="surfaces">
+    <a class="surface-chip" href="https://diesel-monitor.pp.ua/"><span class="kind">сайт</span> diesel-monitor.pp.ua</a>
+    <a class="surface-chip" href="https://www.instagram.com/diesel.monitor.ua/"><span class="kind">instagram</span> @diesel.monitor.ua</a>
+    <a class="surface-chip" href="https://t.me/diesel_monitor_ua"><span class="kind">telegram</span> @diesel_monitor_ua</a>
+  </div>
+</header>
+
+<section>
+  <h2>Главное</h2>
+  <p class="h2sub">Вся система — это один Git-репозиторий и планировщик GitHub Actions</p>
+  <p>
+    Обычно у такого проекта был бы сервер: cron собирает данные, кладёт в PostgreSQL,
+    бэкенд отдаёт API, отдельный воркер постит в соцсети. Здесь ничего этого нет.
+  </p>
+  <ul>
+    <li><strong>Вместо cron</strong> — расписания GitHub Actions (13 сценариев).</li>
+    <li><strong>Вместо базы данных</strong> — JSON-файлы в папке <code>public/data/</code>, которые сами воркфлоу коммитят обратно в репозиторий.</li>
+    <li><strong>Вместо бэкенда</strong> — статический сайт на GitHub Pages: браузер читает те же JSON-файлы напрямую.</li>
+    <li><strong>Вместо очереди задач</strong> — триггер <code>workflow_run</code>: один сценарий запускается по факту завершения другого.</li>
+  </ul>
+  <p>
+    Отсюда главный признак системы: <strong>репозиторий пишет сам себя</strong>.
+    Из 838 коммитов в основной ветке 760 сделал бот — это 91%. Руками сделано 78.
+  </p>
+
+  <div class="stats">
+    <div class="stat"><span class="n">0 ₴</span><span class="l">стоимость эксплуатации: Actions и Pages бесплатны для публичных репозиториев</span></div>
+    <div class="stat"><span class="n">13</span><span class="l">сценариев GitHub Actions</span></div>
+    <div class="stat"><span class="n">760</span><span class="l">коммитов из 838 сделал бот, а не человек</span></div>
+    <div class="stat"><span class="n">~7 500</span><span class="l">строк кода: скрипты + фронтенд</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Как это устроено</h2>
+  <p class="h2sub">Данные втекают слева, публикации вытекают справа</p>
+
+  <figure>
+    <div class="figscroll">
+      <svg viewBox="0 0 1040 440" role="img" aria-label="Схема: внешние источники поступают в скрипт сбора, тот коммитит JSON-файлы в репозиторий, из этих же файлов строится сайт и публикуются посты в Instagram и Telegram, а публикаторы записывают своё состояние обратно в репозиторий">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-site" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="f-site"/>
+          </marker>
+          <marker id="ar-ig" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="f-ig"/>
+          </marker>
+          <marker id="ar-tg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="f-tg"/>
+          </marker>
+        </defs>
+
+        <g font-family="IBM Plex Mono, monospace" font-size="10.5" letter-spacing="1.4" fill="currentColor" opacity=".75">
+          <text x="24" y="26">ИСТОЧНИКИ</text>
+          <text x="252" y="26">СБОР</text>
+          <text x="484" y="26">ХРАНИЛИЩЕ</text>
+          <text x="726" y="26">ПУБЛИКАЦИЯ</text>
+        </g>
+
+        <!-- источники -->
+        <g>
+          <rect x="24" y="46" width="176" height="52" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+          <rect x="24" y="116" width="176" height="52" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+          <rect x="24" y="186" width="176" height="52" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+          <rect x="24" y="256" width="176" height="52" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <text x="40" y="70">Мінфін</text>
+            <text x="40" y="140">НБУ</text>
+            <text x="40" y="210">Yahoo Finance</text>
+            <text x="40" y="280">10 RSS-лент</text>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="10" fill="currentColor" opacity=".65">
+            <text x="40" y="86">цены сетей и областей</text>
+            <text x="40" y="156">курс USD/UAH</text>
+            <text x="40" y="226">нефть Brent</text>
+            <text x="40" y="296">новости рынка</text>
+          </g>
+        </g>
+
+        <!-- стрелки источники → сбор -->
+        <g stroke="currentColor" stroke-width="1.2" fill="none" marker-end="url(#ar)" opacity=".55">
+          <path d="M 200 72 L 228 72 L 228 150 L 246 150"/>
+          <path d="M 200 142 L 228 142 L 228 165 L 246 165"/>
+          <path d="M 200 212 L 228 212 L 228 185 L 246 185"/>
+          <path d="M 200 282 L 228 282 L 228 200 L 246 200"/>
+        </g>
+
+        <!-- сбор -->
+        <rect x="252" y="110" width="180" height="140" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <text x="268" y="140" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">collect.mjs</text>
+        <g font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="currentColor" opacity=".8">
+          <text x="268" y="164">разбор HTML и RSS</text>
+          <text x="268" y="182">без библиотек</text>
+          <text x="268" y="214">запуск: 12:10 и 18:10</text>
+          <text x="268" y="232">каждый день</text>
+        </g>
+
+        <path d="M 432 180 L 478 180" stroke="currentColor" stroke-width="1.4" fill="none" marker-end="url(#ar)"/>
+        <text x="438" y="172" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="currentColor" opacity=".7">коммит</text>
+
+        <!-- хранилище -->
+        <rect x="484" y="100" width="190" height="160" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <text x="500" y="130" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="currentColor">public/data/*.json</text>
+        <g font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="currentColor" opacity=".8">
+          <text x="500" y="156">цены за 238 дней</text>
+          <text x="500" y="176">36 сетей АЗС</text>
+          <text x="500" y="196">23 области</text>
+          <text x="500" y="216">новости</text>
+          <text x="500" y="240">+ состояние публикаций</text>
+        </g>
+
+        <!-- стрелки хранилище → выходы -->
+        <g stroke-width="1.4" fill="none">
+          <path d="M 674 180 L 700 180 L 700 90 L 720 90" class="s-site" marker-end="url(#ar-site)"/>
+          <path d="M 674 180 L 700 180 L 700 186 L 720 186" class="s-ig" marker-end="url(#ar-ig)"/>
+          <path d="M 674 180 L 700 180 L 700 282 L 720 282" class="s-tg" marker-end="url(#ar-tg)"/>
+        </g>
+
+        <!-- выходы -->
+        <g>
+          <rect x="726" y="52" width="290" height="76" fill="none" class="s-site" stroke-width="1.4"/>
+          <text x="744" y="80" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" class="f-site">Сайт на GitHub Pages</text>
+          <text x="744" y="100" font-family="IBM Plex Mono, monospace" font-size="10" class="f-site" opacity=".85">313 статических страниц</text>
+          <text x="744" y="116" font-family="IBM Plex Mono, monospace" font-size="10" class="f-site" opacity=".85">пересобирается при изменении данных</text>
+
+          <rect x="726" y="148" width="290" height="76" fill="none" class="s-ig" stroke-width="1.4"/>
+          <text x="744" y="176" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" class="f-ig">Instagram</text>
+          <text x="744" y="196" font-family="IBM Plex Mono, monospace" font-size="10" class="f-ig" opacity=".85">карусель · сторис · новость · Reels</text>
+          <text x="744" y="212" font-family="IBM Plex Mono, monospace" font-size="10" class="f-ig" opacity=".85">картинки рисует sharp из SVG</text>
+
+          <rect x="726" y="244" width="290" height="76" fill="none" class="s-tg" stroke-width="1.4"/>
+          <text x="744" y="272" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" class="f-tg">Telegram</text>
+          <text x="744" y="292" font-family="IBM Plex Mono, monospace" font-size="10" class="f-tg" opacity=".85">карточка цен раз в сутки</text>
+          <text x="744" y="308" font-family="IBM Plex Mono, monospace" font-size="10" class="f-tg" opacity=".85">до 4 новостей в сутки</text>
+        </g>
+
+        <!-- обратная связь -->
+        <path d="M 871 320 L 871 380 L 579 380 L 579 264" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" fill="none" marker-end="url(#ar)" opacity=".7"/>
+        <text x="600" y="400" font-family="IBM Plex Mono, monospace" font-size="10" fill="currentColor" opacity=".75">публикаторы пишут в git: что и когда уже вышло</text>
+      </svg>
+    </div>
+    <figcaption>
+      Пунктирная стрелка — самое важное в схеме. Публикаторы не просто читают данные,
+      они записывают обратно в репозиторий отметку «этот пост уже вышел». Эта отметка
+      и есть защита от дублей: без неё повторный запуск сценария опубликовал бы пост второй раз.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Instagram</h2>
+  <p class="h2sub">Четыре формата, каждый со своим поводом выйти</p>
+  <p>
+    Аккаунт ведут четыре независимых сценария. Никакой «ленты постов» заранее не существует —
+    каждый пост собирается в момент публикации из свежих данных.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Формат</th><th>Когда выходит</th><th>Что внутри</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Карусель</strong><br><span class="tag tag-ig">5 слайдов</span></td>
+          <td class="mono">после обновления цен,<br>будни</td>
+          <td>Пять слайдов вместо одной картинки: время просмотра — главный сигнал алгоритма, а листание держит человека в посте дольше. Каждый слайд отвечает на свой вопрос.</td>
+        </tr>
+        <tr>
+          <td><strong>Сторис</strong><br><span class="tag tag-ig">24 часа</span></td>
+          <td class="mono">после обновления цен,<br>включая выходные</td>
+          <td>Живёт сутки и не засоряет профиль, поэтому можно напоминать о себе ежедневно. Интерактивные стикеры через API недоступны никакому приложению — адрес сайта пишется прямо на картинке.</td>
+        </tr>
+        <tr>
+          <td><strong>Новость дня</strong></td>
+          <td class="mono">ежедневно 19:00</td>
+          <td>Карточка с новостью рынка. Если безопасных новостей нет — вместо неё выходит карточка «где сейчас дешевле всего».</td>
+        </tr>
+        <tr>
+          <td><strong>Reels</strong><br><span class="tag tag-ig">видео</span></td>
+          <td class="mono">по событию:<br>движение цены</td>
+          <td>Анимированный график поверх видеофона, с музыкой и голосом диктора. Единственный формат, который Instagram показывает не подписчикам.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Механика публикации оказалась неочевидной</h3>
+  <p>
+    Instagram не принимает файл загрузкой. Он <strong>скачивает картинку сам по ссылке</strong> —
+    значит, файл сначала должен где-то лежать в открытом доступе. Отсюда двухшаговая схема:
+    сценарий рисует картинку, коммитит её в репозиторий (она становится доступна по адресу сайта),
+    и только потом зовёт API.
+  </p>
+
+  <figure>
+    <div class="figscroll">
+      <svg viewBox="0 0 1020 250" role="img" aria-label="Шесть шагов публикации: нарисовать картинку, закоммитить её в репозиторий, создать контейнер через API, дождаться готовности, опубликовать, и при ошибке сверить с лентой аккаунта">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="f-warn"/>
+          </marker>
+        </defs>
+
+        <g>
+          <rect x="4" y="40" width="180" height="72" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".65"/>
+          <rect x="212" y="40" width="180" height="72" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".65"/>
+          <rect x="420" y="40" width="180" height="72" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".65"/>
+          <rect x="628" y="40" width="180" height="72" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".65"/>
+          <rect x="836" y="40" width="180" height="72" fill="none" class="s-ig" stroke-width="1.4"/>
+        </g>
+
+        <g font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="1" fill="currentColor" opacity=".6">
+          <text x="20" y="30">ШАГ 1</text>
+          <text x="228" y="30">ШАГ 2</text>
+          <text x="436" y="30">ШАГ 3</text>
+          <text x="644" y="30">ШАГ 4</text>
+          <text x="852" y="30" class="f-ig">ШАГ 5</text>
+        </g>
+
+        <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" font-weight="600" fill="currentColor">
+          <text x="20" y="70">Нарисовать</text>
+          <text x="228" y="70">Закоммитить</text>
+          <text x="436" y="70">Создать контейнер</text>
+          <text x="644" y="70">Дождаться</text>
+          <text x="852" y="70" class="f-ig">Опубликовать</text>
+        </g>
+
+        <g font-family="IBM Plex Mono, monospace" font-size="9.5" fill="currentColor" opacity=".7">
+          <text x="20" y="90">SVG → JPEG</text>
+          <text x="20" y="104">библиотека sharp</text>
+          <text x="228" y="90">файл становится</text>
+          <text x="228" y="104">доступен по URL</text>
+          <text x="436" y="90">POST /media</text>
+          <text x="436" y="104">с ссылкой на файл</text>
+          <text x="644" y="90">опрос статуса,</text>
+          <text x="644" y="104">пока не FINISHED</text>
+          <text x="852" y="90" class="f-ig">POST /media_publish</text>
+          <text x="852" y="104" class="f-ig">→ id поста</text>
+        </g>
+
+        <g stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar2)" opacity=".6">
+          <path d="M 184 76 L 208 76"/>
+          <path d="M 392 76 L 416 76"/>
+          <path d="M 600 76 L 624 76"/>
+          <path d="M 808 76 L 832 76"/>
+        </g>
+
+        <path d="M 926 112 L 926 160" class="s-warn" stroke-width="1.3" stroke-dasharray="4 4" fill="none" marker-end="url(#ar2w)"/>
+        <text x="936" y="140" font-family="IBM Plex Mono, monospace" font-size="9.5" class="f-warn">если ошибка</text>
+
+        <rect x="560" y="164" width="456" height="62" fill="none" class="s-warn" stroke-width="1.2"/>
+        <text x="578" y="190" font-family="IBM Plex Sans, sans-serif" font-size="12.5" font-weight="600" class="f-warn">Сверить с лентой аккаунта</text>
+        <text x="578" y="210" font-family="IBM Plex Mono, monospace" font-size="9.5" class="f-warn">Instagram иногда возвращает ошибку, но пост всё-таки создаёт</text>
+      </svg>
+    </div>
+    <figcaption>
+      Шестой шаг появился после реального сбоя: API ответил ошибкой, сценарий поверил ответу
+      и опубликовал пост заново — в ленте вышли два одинаковых поста. Теперь при ошибке
+      сценарий не верит ответу, а проверяет фактом: смотрит, не появился ли пост в ленте за последние 5 минут.
+    </figcaption>
+  </figure>
+
+  <h3>Хештеги подбираются под содержание</h3>
+  <p>
+    Не фиксированный набор: по общему тегу вроде <code>#пальне</code> пост тонет среди тысяч других.
+    Узкий тег (<code>#Житомирщина</code>) даёт меньше конкуренции — там реально попасть в топ.
+    Сценарий набирает <strong>до пяти</strong> тегов по слотам: два базовых, вид топлива,
+    география или событие, страна. Instagram с конца 2025 года рекомендует не больше пяти —
+    дальше пост выглядит как спам, и охват режется.
+  </p>
+  <div class="note">
+    <span class="nlabel">Ограничение API</span>
+    <p>
+      Настоящую геометку поставить нельзя: в Instagram API с логином через Instagram
+      нет поиска локаций. Поэтому область обозначается хештегом — это обход, а не решение.
+    </p>
+  </div>
+
+  <h3>Токен продлевается сам</h3>
+  <p>
+    Токен Meta живёт 60 дней. Раз в месяц отдельный сценарий продлевает его
+    и <strong>перезаписывает секрет в самом GitHub</strong>. Тонкость: встроенный
+    <code>GITHUB_TOKEN</code> не умеет менять секреты, поэтому нужен отдельный
+    персональный токен — на нём эта автоматика однажды и споткнулась.
+  </p>
+</section>
+
+<section>
+  <h2>Telegram</h2>
+  <p class="h2sub">Канал как зеркало рынка</p>
+  <p>
+    В Telegram работают два независимых сценария на чистом Node — обычные HTTP-запросы
+    к <code>api.telegram.org</code>, без библиотек.
+  </p>
+  <ul>
+    <li><strong>Карточка цен</strong> — раз в сутки, сразу после сбора. Картинка со всеми видами топлива и спарклайном дизеля за 30 дней. Если библиотека рисования не поднялась, пост уйдёт обычным текстом, а не упадёт.</li>
+    <li><strong>Новости</strong> — проверка каждые 2 часа, но не больше одной новости за прогон и не больше четырёх в сутки. Без потолка выходило около десяти в день — для нишевого канала это спам.</li>
+  </ul>
+
+  <div class="note">
+    <span class="nlabel">Главная идея канала</span>
+    <p>
+      Канал публикует новости <strong>в ту сторону, куда идёт тренд цены</strong>.
+      Тренд вверх — идут только новости о подорожании. Тренд вниз — только об удешевлении.
+      Боковой тренд — обе стороны. Смысл в том, чтобы лента не спорила сама с собой:
+      цена растёт, а канал рассказывает, как всё дешевеет.
+    </p>
+    <p>
+      На сайте при этом показываются <strong>все</strong> новости — фильтр по тренду работает только для канала.
+    </p>
+  </div>
+
+  <h3>Как определяется «сторона» новости</h3>
+  <p>
+    Никакого ИИ здесь нет — работают регулярные выражения. Один набор ловит признаки
+    подорожания (подорожало, дефицит, акциз, девальвация, остановка НПЗ, эмбарго),
+    другой — признаки удешевления (подешевело, профицит, укрепление гривны, рост поставок).
+    Совпал только первый — новость «красная», только второй — «зелёная», оба или ни одного — «жёлтая».
+  </p>
+  <p>
+    Отдельные фильтры отсекают то, что публиковать нельзя или не нужно: внутренние
+    российские сюжеты (дефицит в Москве — не наша тема), но с оговоркой, что новости
+    об ударах по Украине остаются. Для Instagram фильтр строже: военный контент туда не идёт вообще —
+    первый аккаунт забанили за сутки.
+  </p>
+</section>
+
+<section>
+  <h2>Reels</h2>
+  <p class="h2sub">Самая сложная часть: видео собирается с нуля каждый раз</p>
+  <p>
+    Ролик не берётся из заготовок. Сценарий рисует кадры графика, накладывает их
+    на видеофон через ffmpeg, подмешивает музыку и голос диктора.
+  </p>
+
+  <h3>Сначала решается, есть ли повод</h3>
+  <p>
+    Ролик должен выходить тогда, когда есть о чём говорить. В спокойную неделю
+    цена двигается на копейки, график превращается в прямую линию — такое видео
+    не досматривают, а за недосмотренные Reels алгоритм режет охват следующим.
+    Поэтому отдельный сценарий проверяет: движение цены за неделю, паузу
+    с прошлого ролика и, если неделя тихая, ищет <strong>другой сюжет</strong> —
+    обзор месяца, квартала или года, где движение точно есть.
+  </p>
+
+  <h3>Музыка — только CC0, и это юридическое решение</h3>
+  <p>
+    Фильтр жёсткий: только лицензия CC0 и только с Freesound. Остальные варианты
+    отпадают по причинам, которые проверялись отдельно:
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th class="mono">Лицензия</th><th>Почему не подходит</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">CC0</td><td>Подходит. Коммерция разрешена, атрибуция не нужна — единственный полностью автоматизируемый путь.</td></tr>
+        <tr><td class="mono">BY-ND</td><td>В видео запрещена вообще: синхронизация с видеорядом считается производным произведением.</td></tr>
+        <tr><td class="mono">BY-SA</td><td>«Заражает»: всё видео пришлось бы выпускать под той же лицензией.</td></tr>
+        <tr><td class="mono">BY-NC</td><td>Коммерческое использование запрещено.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Файл лицензии сохраняется рядом с треком — как доказательство на случай спора.</p>
+
+  <h3>Голос</h3>
+  <p>
+    Текст для диктора собирается детерминированно из цифр ролика — никакой генерации
+    текста, числа просто округляются. Озвучивает его Gemini TTS. Сбой озвучки
+    не критичен: ролик соберётся без голоса и всё равно выйдет.
+  </p>
+</section>
+
+<section>
+  <h2>Данные</h2>
+  <p class="h2sub">Откуда берутся цифры и почему это сложнее, чем кажется</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Источник</th><th>Что берётся</th><th>Как</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Мінфін</strong></td><td>Средние цены, цены сетей АЗС по областям</td><td>Разбор HTML регулярками, кодировка windows-1251</td></tr>
+        <tr><td><strong>НБУ</strong></td><td>Официальный курс USD/UAH</td><td>Открытый API</td></tr>
+        <tr><td><strong>Yahoo Finance</strong></td><td>Нефть Brent, дневные закрытия</td><td>Открытый эндпоинт</td></tr>
+        <tr><td><strong>10 RSS-лент</strong></td><td>Новости: 4 украинских и 6 мировых</td><td>Свой парсер на регулярках; англоязычные переводятся</td></tr>
+        <tr><td><strong>Wayback Machine</strong></td><td>История цен с 2024 года</td><td>Разовая заливка архива</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <span class="nlabel">Ловушка, на которой система однажды сломалась</span>
+    <p>
+      Мінфін перестроил страницы, и парсер перестал находить таблицу. Когда нашли новые адреса,
+      выяснилось хуже: в одной таблице между названием сети и ценами есть лишняя ячейка с логотипом,
+      а в другой её нет — колонки съезжали, и цена А-95 попадала в графу А-92.
+      Лечение: выравнивать <strong>с конца строки</strong>, а не с начала — последние пять ячеек
+      всегда одни и те же виды топлива.
+    </p>
+  </div>
+
+  <p>
+    Сбор устроен так, что падение одного источника не рушит остальные: каждый источник
+    обёрнут отдельно и получает три попытки с нарастающей паузой. Если новости не пришли —
+    цены всё равно обновятся. Фатальный случай ровно один: <strong>не ответил ни один
+    источник цен</strong>, тогда история за день не пишется вовсе, чтобы не занести в неё пустоту.
+  </p>
+
+  <h3>Данные в файле могут быть разной свежести — и это сделано нарочно</h3>
+  <p>
+    После перестройки Мінфіна разбивка по областям стала приходить не всегда.
+    Простое решение — «нет данных, значит пусто» — обрушило бы больше двух сотен
+    страниц сайта. Поэтому если свежая разбивка не пришла, сбор <strong>сохраняет
+    предыдущую</strong> и рядом кладёт отдельное поле с датой, когда её видели последний раз.
+    Средние цены при этом свежие. Страницы продолжают работать, а расхождение
+    в датах указано честно, а не замаскировано.
+  </p>
+
+  <div class="note">
+    <span class="nlabel">В git попадают не только данные</span>
+    <p>
+      Картинки и видео тоже коммитятся — иначе Instagram не сможет их скачать.
+      Чтобы репозиторий не распух, чистка встроена в сами сценарии:
+      от карусели хранятся два последних комплекта слайдов, от Reels — три последних ролика,
+      остальное удаляется при следующем запуске.
+    </p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="n">238</span><span class="l">дней истории цен, с января 2024</span></div>
+    <div class="stat"><span class="n">36</span><span class="l">сетей АЗС</span></div>
+    <div class="stat"><span class="n">23</span><span class="l">области</span></div>
+    <div class="stat"><span class="n">878</span><span class="l">точек зарядки электромобилей</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Сайт</h2>
+  <p class="h2sub">Статика, но 313 страниц</p>
+  <p>
+    Фронтенд — React 19, TypeScript, Vite, Tailwind, графики на ECharts, карта на Leaflet.
+    Оформление — финансовый терминал: тёмный фон, моноширинный шрифт, бирюзовый акцент.
+  </p>
+  <p>
+    Приложение работает на маршрутах через решётку (<code>/#/region/…</code>), а такие адреса
+    Google не индексирует. Отсюда <strong>пререндер</strong>: после сборки отдельный скрипт
+    выпекает обычные статические страницы — по одной на каждую область и сеть, плюс
+    перемножение «топливо × область» и «топливо × сеть», раздел «где дешевле» и страницу
+    зарядок. Итого 313 адресов.
+  </p>
+  <p>
+    Это не копии одной и той же страницы. Внутри — транслитерация названий по украинскому
+    стандарту, склонение всех 23 областей в местный падеж, место области в рейтинге
+    («3 місце з 23») и перелинковка с соседями по этому рейтингу. То есть у каждой
+    страницы свой текст и свой смысл.
+  </p>
+  <h3>Виджет — это публичный контракт</h3>
+  <p>
+    Любой сайт может вставить две строки кода и получить блок со свежими ценами;
+    виджет самодостаточен, без зависимостей, и даёт обратную ссылку. Важное следствие
+    для разработки: файл с текущими ценами читает не только наш фронтенд, но и <strong>чужие
+    сайты по прямой ссылке</strong>. Значит, его формат нельзя менять свободно — это
+    внешний интерфейс, а не внутренний файл.
+  </p>
+  <h3>Прогноз — это не ИИ</h3>
+  <p>
+    Блоки «Прогноз» и «Чому змінюється ціна» считаются на клиенте:
+    <strong>взвешенная линейная регрессия</strong> по 90 дням, где свежие точки весят больше,
+    а коридор неопределённости расширяется как корень из числа дней. Уверенность выводится
+    из качества подгонки. Факторы (нефть, курс, моментум, новости) оцениваются по силе
+    и сопровождаются готовым объяснением, как каждый из них работает.
+  </p>
+</section>
+
+<section>
+  <h2>Расписание</h2>
+  <p class="h2sub">Один день системы</p>
+  <p>
+    Время указано киевское. Всё запускается само; ноутбук не нужен.
+  </p>
+
+  <div class="day">
+    <div class="slot"><div class="t">каждые 2 ч<small>круглосуточно</small></div><div class="d"><strong>Сбор новостей и пост в Telegram</strong><span>10 лент, фильтр по теме и по тренду цены. Не больше одной новости за прогон.</span></div></div>
+    <div class="slot"><div class="t">06:20<small>понедельник</small></div><div class="d"><strong>Обновление точек зарядки</strong><span>Раз в неделю.</span></div></div>
+    <div class="slot"><div class="t">08:30<small>по событию</small></div><div class="d"><strong>Проверка повода для Reels</strong><span>Если движения цены нет — ищется «тихий» сюжет: месяц, квартал, год.</span></div></div>
+    <div class="slot"><div class="t">09:00<small>понедельник</small></div><div class="d"><strong>Недельная сводка владельцу</strong><span>В личный чат Telegram, не в канал.</span></div></div>
+    <div class="slot"><div class="t">15:10<small>главный запуск</small></div><div class="d"><strong>Сбор цен</strong><span>Мінфін обновляет цены около полудня. Сразу после сбора данные коммитятся, и по факту их обновления запускаются пост в Telegram, карусель и сторис в Instagram.</span></div></div>
+    <div class="slot"><div class="t">19:00<small>ежедневно</small></div><div class="d"><strong>Новость дня в Instagram</strong><span>Или карточка «где дешевле всего», если подходящих новостей нет.</span></div></div>
+    <div class="slot"><div class="t">21:10<small>контрольный</small></div><div class="d"><strong>Повторный сбор цен</strong><span>На случай поздних правок или сбоя первого запуска.</span></div></div>
+    <div class="slot"><div class="t">1-го числа<small>ежемесячно</small></div><div class="d"><strong>Продление токена Instagram</strong><span>Сценарий сам перезаписывает секрет в GitHub.</span></div></div>
+  </div>
+
+  <div class="note">
+    <span class="nlabel">Почему посты привязаны к сбору, а не к часам</span>
+    <p>
+      GitHub задерживает запуск по расписанию на час-два — это нормальное поведение,
+      а не сбой. Пост по фиксированному времени регулярно выходил <strong>раньше, чем приходили данные</strong>,
+      и показывал вчерашние цены. Поэтому публикации запускаются не по часам, а по факту
+      завершения сбора: триггер <code>workflow_run</code>.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Решения</h2>
+  <p class="h2sub">Что в этом проекте стоит объяснить отдельно</p>
+
+  <div class="decisions">
+    <div class="decision">
+      <h4>Состояние в git вместо базы данных</h4>
+      <p>Файл вида <code>{"lastDate":"2026-08-21","postedAt":"..."}</code> коммитится вместе с данными. <strong>Это и есть защита от дублей:</strong> сбор запускается дважды в день, но пост цен выходит один раз, потому что второй запуск видит в файле ту же дату и молчит.</p>
+    </div>
+    <div class="decision">
+      <h4>Данные коммитятся первыми, публикация — потом</h4>
+      <p>Порядок шагов выбран сознательно. <strong>Сбой в соцсетях не должен блокировать обновление сайта</strong> — сначала данные попадают в репозиторий, и только затем идут попытки публикации.</p>
+    </div>
+    <div class="decision">
+      <h4>Проверять фактом, а не ответом API</h4>
+      <p>Instagram может вернуть ошибку и всё равно создать пост. Ответу API нельзя верить — <strong>нужно смотреть, что реально произошло в аккаунте.</strong> Это правило появилось после двух одинаковых постов в ленте.</p>
+    </div>
+    <div class="decision">
+      <h4>Надёжность вынесена в рантайм</h4>
+      <p>Линтер и форматирование настроены, но в конвейере не запускаются; тестов нет, единственная автоматическая проверка — компиляция типов при сборке. <strong>Взамен защита стоит на каждом шаге выполнения:</strong> повторные попытки, мягкая деградация, продолжение при ошибке публикации, проверка результата фактом. Это осознанный размен, а не забывчивость — но знать о нём стоит.</p>
+    </div>
+    <div class="decision">
+      <h4>Почти нет зависимостей</h4>
+      <p>Разбор HTML, RSS, классификация новостей — всё на регулярных выражениях и встроенном <code>fetch</code>. Из тяжёлого только рисование картинок и ffmpeg для видео. <strong>Меньше зависимостей — меньше того, что сломается само по себе.</strong></p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Что не работает</h2>
+  <p class="h2sub">Честный список ограничений</p>
+  <ul>
+    <li><strong>Не видно просмотров и охвата.</strong> Через API доступны только лайки и число комментариев. Метрики требуют прохождения проверки приложения в Meta, а она ещё не подана. Код для метрик уже написан и молча возвращает пустоту — как только право дадут, цифры появятся сами.</li>
+    <li><strong>Не видно текстов комментариев и директа.</strong> Та же причина. Мост «комментарий → Telegram» написан и работает вхолостую.</li>
+    <li><strong>API не меняет профиль.</strong> Описание аккаунта и ссылку в шапке можно править только руками.</li>
+    <li><strong>Музыку из библиотеки Instagram взять нельзя</strong> — только собственный аудиофайл. Отсюда возня с лицензиями.</li>
+    <li><strong>Видеофоны для Reels генерируются вручную.</strong> Автоматизировать веб-студию не получилось, готовые клипы просто лежат в репозитории и чередуются.</li>
+  </ul>
+</section>
+
+<footer>
+  Дизель Монітор UA · дашборд цен на топливо в Украине<br>
+  сайт diesel-monitor.pp.ua · Instagram @diesel.monitor.ua · Telegram @diesel_monitor_ua
+</footer>
+
+</div>
+
+</body>
+</html>
