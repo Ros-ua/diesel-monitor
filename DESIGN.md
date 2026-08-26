@@ -41,7 +41,6 @@ import { useAppData } from '../context/DataContext'; // { latest, history, news,
 `News { items: NewsItem[] }`, `NewsItem { title, summary, url, source, publishedAt, impact: 'up'|'down'|'neutral' }`
 (impact = тиск на ціну: up=вгору=🔴, down=вниз=🟢, neutral=🟡),
 `Factors { days: { date, brent?, usd? }[] }`, `FuelKey = 'dp'|'a95p'|'a95'|'a92'|'gas'`, `FUEL_LABELS`, `FUEL_ORDER`.
-`AlertRule` — типи правил сповіщень.
 
 ВАЖЛИВО про дані: історія РОЗРІДЖЕНА (архівні точки ~1–5 на місяць з 2024, щоденні — лише з 2026-07-21).
 Всі функції статистики це враховують. `latest.networks[name]` = медіана по областях (`regionCount` — к-ть областей).
