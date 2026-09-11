@@ -72,11 +72,66 @@ const FUEL_COLS = ['a95p', 'a95', 'a92', 'dp', 'gas'];
  * структурою: /tm/ (мережі АЗС) і /reg/ (області). Порожні клітинки в них
  * трапляються часто — мережа може не продавати якийсь вид пального.
  */
+/**
+ * Назви колонок у шапці таблиці → наші ключі. `null` означає «впізнали, але
+ * нам не потрібна»: колонку треба саме ВПІЗНАТИ, інакше «ДП+» займе місце «ДП»,
+ * і справжній дизель нікуди буде покласти.
+ *
+ * Порядок важливий: перше правило, що збіглося, перемагає. Тому «ДП+» стоїть
+ * ПЕРЕД голим «преміум», а «А-95 преміум» — перед «А-95».
+ */
+const ЗАГОЛОВКИ_КОЛОНОК = [
+  [/(?:дп|дизел)\S{0,6}\s*(?:\+|прем|premium)/i, null],
+  [/95\s*(?:\+|прем|premium)/i, 'a95p'],
+  [/(?:прем|premium)/i, 'a95p'],
+  [/95/, 'a95'],
+  [/92/, 'a92'],
+  [/дизел|дп/i, 'dp'],
+  [/газ/i, 'gas'],
+];
+
+/**
+ * Карта колонок за ШАПКОЮ таблиці: { індекс клітинки -> вид пального }.
+ *
+ * ⚠️ 12.09.2026. Раніше ціни бралися як п'ять ОСТАННІХ клітинок рядка, без
+ * жодної прив'язки до шапки. Зайва колонка (наприклад «ДП+») зсувала все:
+ * дизель виходив 30,00 замість 60,00 — удвічі дешевше, і це проходило єдину
+ * перевірку «від 5 до 500» без жодної тривоги. Мінфін уже перебудовував ці
+ * сторінки 29.07.2026, тож випадок не вигаданий.
+ *
+ * Повертає { карта, заголовок } або null, якщо шапки немає чи вона незрозуміла.
+ */
+function картаКолонок(таблиця) {
+  for (const rowM of таблиця.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+    const клітинки = [...rowM[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)]
+      .map(c => cleanText(c[1]));
+    const карта = {};
+    let впізнано = 0;
+    клітинки.forEach((текст, i) => {
+      // ⚠️ Клітинка шапки ОБОВ'ЯЗКОВО має літеру. Без цієї умови ціна «70,95»
+      // збіглася б із правилом /95/, і звичайний рядок даних видав би себе
+      // за шапку — з неї й побудувалася б хибна карта.
+      if (!/[а-яіїєґА-ЯІЇЄҐa-zA-Z]/.test(текст)) return;
+      const правило = ЗАГОЛОВКИ_КОЛОНОК.find(([re]) => re.test(текст));
+      if (!правило) return;
+      впізнано++;                                       // «ДП+» теж ознака шапки
+      const вид = правило[1];
+      if (!вид) return;                                 // впізнали і не беремо
+      if (Object.values(карта).includes(вид)) return;   // перша колонка перемагає
+      карта[i] = вид;
+    });
+    if (впізнано >= 3) return { карта, заголовок: rowM[0] };
+  }
+  return null;
+}
+
 function parsePriceTable(html, label) {
   const out = {};
 
   for (const tabM of html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/g)) {
+    const шапка = картаКолонок(tabM[1]);
     for (const rowM of tabM[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+      if (шапка && rowM[0] === шапка.заголовок) continue;   // сам рядок шапки
       const cells = [...rowM[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(c => c[1]);
       if (cells.length < 3) continue;
 
@@ -85,16 +140,36 @@ function parsePriceTable(html, label) {
       if (!name || /Оператор|Область|Вид палива|Ціна/i.test(name)) continue;
       if (!/[а-яіїєґА-ЯІЇЄҐa-zA-Z]/.test(name)) continue;
 
-      // Вирівнюємо З КІНЦЯ: у /tm/ між назвою і цінами є ще клітинка з лого,
-      // у /reg/ її немає. Останні 5 клітинок — завжди А95+, А95, А92, ДП, Газ.
-      const priceCells = cells.slice(-FUEL_COLS.length);
-      if (priceCells.length < FUEL_COLS.length) continue;
-
       const prices = {};
-      priceCells.forEach((c, i) => {
-        const v = num(cleanText(c)); // порожня клітинка → null, вид пального відсутній
-        if (v !== null && v > 5 && v < 500) prices[FUEL_COLS[i]] = v;
-      });
+      if (шапка) {
+        // Головний шлях: ціна береться з колонки, НАЗВАНОЇ в шапці.
+        for (const [i, вид] of Object.entries(шапка.карта)) {
+          const v = num(cleanText(cells[i] ?? '')); // порожня клітинка → null
+          if (v !== null && v > 5 && v < 500) prices[вид] = v;
+        }
+      } else {
+        // Запасний шлях, коли шапки немає. Вирівнюємо З КІНЦЯ: у /tm/ між
+        // назвою і цінами є ще клітинка з лого, у /reg/ її немає.
+        //
+        // ⚠️ Але тільки коли клітинок РІВНО стільки, скільки чекаємо (назва,
+        // можливо лого, і п'ять цін). Зайва колонка означає, що верстка
+        // змінилася, і вгадувати не можна: саме так дизель виходив 30,00
+        // замість 60,00. Краще чесно пропустити рядок, ніж опублікувати
+        // половинну ціну.
+        if (cells.length > FUEL_COLS.length + 2) continue;
+        // ⚠️ Сім клітинок бувають ДВОХ різних форм: [назва, лого, 5 цін] — так
+        // влаштована /tm/ — і [назва, 6 цін], тобто з зайвою колонкою. За
+        // довжиною вони не відрізняються, і другий випадок знову дає зсув.
+        // Відрізняємо за другою клітинкою: лого — не число.
+        if (cells.length === FUEL_COLS.length + 2
+            && num(cleanText(cells[1])) !== null) continue;
+        const priceCells = cells.slice(-FUEL_COLS.length);
+        if (priceCells.length < FUEL_COLS.length) continue;
+        priceCells.forEach((c, i) => {
+          const v = num(cleanText(c)); // порожня клітинка → null, вид відсутній
+          if (v !== null && v > 5 && v < 500) prices[FUEL_COLS[i]] = v;
+        });
+      }
       if (Object.keys(prices).length) out[name] = prices;
     }
   }
@@ -131,8 +206,10 @@ export function parseDetail(html) {
 
   for (const tabM of html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/g)) {
     const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+    const шапка = картаКолонок(tabM[1]);
     let m;
     while ((m = rowRe.exec(tabM[1])) !== null) {
+      if (шапка && m[0] === шапка.заголовок) continue;   // сам рядок шапки
       const row = m[1];
       const colspan = row.match(/<t[dh][^>]*colspan[^>]*>([\s\S]*?)<\/t[dh]>/);
       if (colspan) {
@@ -148,13 +225,29 @@ export function parseDetail(html) {
       if (cells.length < 6 || !current) continue;
       const network = cleanText(cells[0]);
       if (!network || /Оператор/i.test(network)) continue;
-      // cells: [назва, лого, а95+, а95, а92, дп, газ] або без лого — вирівнюємо з кінця
-      const priceCells = cells.slice(-5);
+      // ⚠️ Те саме, що в parsePriceTable: колонка визначається ШАПКОЮ, а не
+      // порядком з кінця. Зайва колонка тут так само зсувала дизель.
       const prices = {};
-      priceCells.forEach((c, i) => {
-        const v = num(cleanText(c));
-        if (v !== null && v > 5 && v < 500) prices[FUEL_COLS[i]] = v;
-      });
+      if (шапка) {
+        for (const [i, вид] of Object.entries(шапка.карта)) {
+          const v = num(cleanText(cells[i] ?? ''));
+          if (v !== null && v > 5 && v < 500) prices[вид] = v;
+        }
+      } else {
+        // cells: [назва, лого, а95+, а95, а92, дп, газ] або без лого.
+        if (cells.length > FUEL_COLS.length + 2) continue;
+        // ⚠️ Сім клітинок бувають ДВОХ різних форм: [назва, лого, 5 цін] — так
+        // влаштована /tm/ — і [назва, 6 цін], тобто з зайвою колонкою. За
+        // довжиною вони не відрізняються, і другий випадок знову дає зсув.
+        // Відрізняємо за другою клітинкою: лого — не число.
+        if (cells.length === FUEL_COLS.length + 2
+            && num(cleanText(cells[1])) !== null) continue;
+        const priceCells = cells.slice(-5);
+        priceCells.forEach((c, i) => {
+          const v = num(cleanText(c));
+          if (v !== null && v > 5 && v < 500) prices[FUEL_COLS[i]] = v;
+        });
+      }
       if (Object.keys(prices).length) regions[current][network] = prices;
     }
   }
