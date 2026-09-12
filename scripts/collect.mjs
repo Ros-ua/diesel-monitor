@@ -14,6 +14,10 @@ import {
   nationalNetworks,
 } from './lib/minfin.mjs';
 import { collectNews } from './lib/news.mjs';
+// ⚠️ Числа живуть окремим модулем, щоб їх можна було СПРОСИТИ пробою:
+// імпортувати collect.mjs не можна — внизу в нього main(), і проба
+// запустила б справжній збір із походом у мережу.
+import { курс } from './lib/числа.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 
@@ -55,7 +59,11 @@ async function readJson(file, fallback) {
   }
 }
 
-const round2 = v => (v === null || v === undefined ? null : Math.round(v * 100) / 100);
+/** Відповідь мережі: тільки успішна. Інакше тіло помилки піде як дані. */
+const тількиУспішні = async r => {
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+};
 
 // --news-only: легкий режим для частого запуску — лише RSS-новини, без цін
 const newsOnly = process.argv.includes('--news-only');
@@ -70,12 +78,12 @@ async function main() {
     newsOnly ? null : retry('minfin-reg', () => fetchPage(REG_URL)),
     newsOnly ? null : retry('minfin-detail', () => fetchPage(DETAIL_URL)),
     newsOnly ? null : retry('minfin-avg', () => fetchPage(AVG_URL)),
-    newsOnly ? null : retry('nbu', () => fetch(NBU_URL).then(r => r.json())),
-    newsOnly ? null : retry('nbu-eur', () => fetch(NBU_EUR_URL).then(r => r.json())),
+    newsOnly ? null : retry('nbu', () => fetch(NBU_URL).then(тількиУспішні)),
+    newsOnly ? null : retry('nbu-eur', () => fetch(NBU_EUR_URL).then(тількиУспішні)),
     newsOnly
       ? null
       : retry('brent', () =>
-          fetch(BRENT_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json())
+          fetch(BRENT_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(тількиУспішні)
         ),
     retry('news', () => collectNews()),
   ]);
@@ -96,11 +104,16 @@ async function main() {
   const regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
   // стара матриця «область × мережа» — якщо Мінфін колись поверне /detail/
   const detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
-  const averages = avgHtml ? parseAverages(avgHtml) : null;
-  const usd = round2(nbu?.[0]?.rate ?? null);
-  const eur = round2(nbuEur?.[0]?.rate ?? null);
+  // ⚠️ 12.09.2026: теж через tryParse, як і решта джерел. Раніше зміна
+  // верстки сторінки середніх цін валила ВЕСЬ збір: жодного записаного
+  // файлу, навіть журналу запуску, і сайт лишався з позавчорашньою ціною
+  // при справних інших джерелах. Перевірено прогоном: 0 файлів, exit 1.
+  const averages = tryParse(avgHtml, parseAverages, 'середні ціни');
+  const usd = курс(nbu?.[0]?.rate ?? null, { від: 1, до: 1000 });
+  const eur = курс(nbuEur?.[0]?.rate ?? null, { від: 1, до: 1000 });
   const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
-  const brent = round2(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null);
+  const brent = курс(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null,
+                     { від: 1, до: 1000 });
 
   if (!newsOnly && !averages && !detail && !tmNetworks)
     throw new Error('Жодне джерело цін недоступне — історію не оновлено');
@@ -208,7 +221,13 @@ async function main() {
     const runlog = await readJson('collect-log.json', { runs: [] });
     runlog.runs.push({
       at: new Date().toISOString(),
-      ok: { detail: !!detail, averages: !!averages, usd: usd !== null, brent: brent !== null, news: !!news?.items?.length },
+      // ⚠️ Прапорці рахуємо ПО РЕЗУЛЬТАТУ перевірки. Раніше `usd:true` стояло
+      // й тоді, коли в latest.json лягав null: прапорець ставився по факту
+      // відповіді, а не по придатності числа. І свого прапорця в EUR не було
+      // взагалі — його відсутність нічого не означала.
+      ok: { detail: !!detail, averages: !!averages, usd: usd !== null,
+            eur: eur !== null, brent: brent !== null,
+            news: !!news?.items?.length },
     });
     runlog.runs = runlog.runs.slice(-100);
     await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));
