@@ -117,12 +117,41 @@ const ПІДСАДКИ = [
     стало: String.raw`const ПІДПИС_ЧУЖОЇ = /по\s+роках|за\s+роками|динамік\S*\s+цін|архів|курс\S*\s+валют/i;`,
     стереже: 'справжній заголовок «Динаміка цін»',
   },
+  {
+    імя: 'приймати відповідь мережі без перевірки r.ok',
+    файл: 'collect.mjs',
+    сюїта: 'tests-collect.mjs',
+    було: [
+      'const тількиУспішні = async r => {',
+      "  if (!r.ok) throw new Error(\`HTTP ${r.status}\`);",
+      '  return r.json();',
+      '};',
+    ].join('\n'),
+    стало: 'const тількиУспішні = async r => r.json();',
+    стереже: 'курс НЕ записано',
+  },
+  {
+    імя: 'рахувати прапорці по факту відповіді, а не по результату',
+    файл: 'collect.mjs',
+    сюїта: 'tests-collect.mjs',
+    було: 'ok: { detail: !!detail, averages: !!averages, usd: usd !== null,',
+    стало: 'ok: { detail: !!detail, averages: !!averages, usd: !!nbu,',
+    стереже: 'прапорець usd чесний і при порожньому курсі',
+  },
+  {
+    імя: 'прибрати tryParse із середніх цін',
+    файл: 'collect.mjs',
+    сюїта: 'tests-collect.mjs',
+    було: "const averages = tryParse(avgHtml, parseAverages, 'середні ціни');",
+    стало: "const averages = avgHtml ? parseAverages(avgHtml) : null;",
+    стереже: 'збір вцілів',
+  },
 ];
 
-function прогін(корінь) {
+function прогін(корінь, сюїта = 'tests-parser.mjs') {
   try {
-    const out = execFileSync(process.execPath, [path.join(корінь, 'tests-parser.mjs')],
-      { encoding: 'utf8', stdio: 'pipe' });
+    const out = execFileSync(process.execPath, [path.join(корінь, сюїта)],
+      { encoding: 'utf8', stdio: 'pipe', timeout: 300000 });
     return { впало: false, текст: out };
   } catch (e) {
     return { впало: true, текст: String(e.stdout ?? '') + String(e.stderr ?? '') };
@@ -140,13 +169,15 @@ function накопії(робота) {
 }
 
 // Спершу переконуємось, що на ЦІЛІЙ копії все зелене — інакше міряти нічим.
-const базовий = накопії(прогін);
-if (базовий.впало) {
-  console.log('❌ на цілій копії проби вже червоні — міряти нічим');
-  console.log(базовий.текст.slice(-800));
-  process.exit(1);
+for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs']) {
+  const базовий = накопії(к => прогін(к, сюїта));
+  if (базовий.впало) {
+    console.log('❌ на цілій копії ' + сюїта + ' вже червоні — міряти нічим');
+    console.log(базовий.текст.slice(-800));
+    process.exit(1);
+  }
 }
-console.log('ціла копія: усі проби зелені\n');
+console.log('ціла копія: усі проби зелені (розбір + наскрізні)\n');
 
 let спіймано = 0;
 for (const п of ПІДСАДКИ) {
@@ -156,7 +187,7 @@ for (const п of ПІДСАДКИ) {
     const скільки = текст.split(п.було).length - 1;
     if (скільки !== 1) return { якір: скільки };
     writeFileSync(ціль, текст.replace(п.було, п.стало));
-    return прогін(корінь);
+    return прогін(корінь, п.сюїта);
   });
 
   if (р.якір !== undefined) {
