@@ -18,6 +18,7 @@ import { collectNews } from './lib/news.mjs';
 // імпортувати collect.mjs не можна — внизу в нього main(), і проба
 // запустила б справжній збір із походом у мережу.
 import { курс } from './lib/числа.mjs';
+import { вибратиМережі } from './lib/мережі.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 
@@ -127,6 +128,21 @@ async function main() {
   const pageDate = averages?.date ? averages.date.split('.').reverse().join('-') : today;
   if (pageDate !== today) log(`Увага: мінфін ще показує дані за ${pageDate}`);
 
+  // ⚠️ Рішення про карту мереж приймаємо ОДИН раз і ДО запису файлів — інакше
+  // в history.json потрапляв би обвалений набір, а в latest.json підставлена
+  // вчорашня карта під сьогоднішньою датою. Подробиці — у lib/мережі.mjs.
+  const prev = await readJson('latest.json', null);
+  const вибір = вибратиМережі({
+    свіжі: networks,
+    попередні: prev?.networks ?? null,
+    дата: pageDate,
+    попередняДата: prev?.networksDate ?? prev?.date ?? null,
+  });
+  if (!newsOnly && вибір.обвал)
+    log(`Увага: розібрано мереж ${вибір.стало} замість ${вибір.було} — беру попередню карту`);
+  if (!newsOnly && !вибір.свіжі && вибір.мережі)
+    log(`Увага: карта мереж не оновилась, лишається за ${вибір.дата ?? 'невідому дату'}`);
+
   // ── history.json: одна точка на день ──
   if (!newsOnly) {
     const history = await readJson('history.json', { days: [] });
@@ -134,7 +150,9 @@ async function main() {
       date: pageDate,
       source: 'minfin',
       ...(averages && { avg: averages.avg }),
-      ...(networks && { networks }),
+      // ⚠️ У щоденну історію пишемо лише СВІЖУ карту: підставити сюди
+      // вчорашню означало б вигадати день, якого не було.
+      ...(вибір.свіжі && { networks: вибір.мережі }),
       ...(usd !== null && { usd }),
       ...(brent !== null && { brent }),
     };
@@ -152,8 +170,7 @@ async function main() {
     // Якщо розбивки цього разу немає — лишаємо попередню разом із датою, коли
     // її востаннє бачили. Інакше 200+ SEO-сторінок і карта мереж просто зникнуть
     // із сайту, а це гірше за трохи застарілі цифри з чесною позначкою.
-    const prev = await readJson('latest.json', null);
-    const keepNetworks = networks ?? prev?.networks;
+    const keepNetworks = вибір.мережі;
     const keepRegions = detail?.regions ?? prev?.regions;
     // дата матриці «область × мережа» — вона застигла на 28.07.2026,
     // коли Мінфін прибрав /detail/; середні по областях беремо з /reg/
@@ -164,6 +181,9 @@ async function main() {
       collectedAt: new Date().toISOString(),
       ...(averages && { avg: averages.avg, avgChange: averages.change }),
       ...(keepNetworks && { networks: keepNetworks }),
+      // ⚠️ Коли карту мереж справді зібрали. Без цієї позначки вчорашні мережі
+      // лягали під сьогоднішньою датою і сьогоднішнім collectedAt мовчки.
+      ...(вибір.дата && { networksDate: вибір.дата }),
       // середні ціни по областях — свіже джерело /reg/
       ...(regionAvg && { regionAvg }),
       // стара матриця «область × мережа» — заморожена на breakdownDate
@@ -227,7 +247,11 @@ async function main() {
       // взагалі — його відсутність нічого не означала.
       ok: { detail: !!detail, averages: !!averages, usd: usd !== null,
             eur: eur !== null, brent: brent !== null,
-            news: !!news?.items?.length },
+            news: !!news?.items?.length,
+            // ⚠️ Окремий прапорець: свіжа карта мереж чи підставлена попередня.
+            // Без нього «одна мережа замість тридцяти шести» не лишала сліду.
+            networks: вибір.свіжі },
+      ...(вибір.обвал && { обвалМереж: { було: вибір.було, стало: вибір.стало } }),
     });
     runlog.runs = runlog.runs.slice(-100);
     await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));
