@@ -43,9 +43,16 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Дані без змін"
           else
+            # ⚠️ Деплой — лише коли змінилось щось ЗНАЧУЩЕ. Раніше тут стояло
+            # changed=true беззастережно, а в кожному файлі є позначка часу,
+            # яка міняється в КОЖНОМУ прогоні: history.updated, factors.updated,
+            # latest.collectedAt, новий запис у журналі. Через це сайт
+            # перезбирався двічі на добу навіть тоді, коли жодна ціна не
+            # зрушила. Порівнюємо ДО коміту, бо скрипт дивиться на HEAD.
+            if node scripts/змінилось.mjs; then meaningful=true; else meaningful=false; fi
             git commit -m "data: автооновлення цін $(date -u +%Y-%m-%d_%H:%M)"
             git push
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "changed=$meaningful" >> "$GITHUB_OUTPUT"
           fi
       - name: Пост у Telegram-канал
         continue-on-error: true # падіння посту не валить збір цін

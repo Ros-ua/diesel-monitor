@@ -39,6 +39,10 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Новини без змін"
           else
+            # ⚠️ Деплой — лише коли змінились самі новини, а не позначка
+            # часу у файлі (див. scripts/змінилось.mjs). Перевіряємо ДО
+            # коміту, бо скрипт порівнює робочу теку з HEAD.
+            if node scripts/змінилось.mjs; then meaningful=true; else meaningful=false; fi
             git commit -m "data: автооновлення новин $(date -u +%Y-%m-%d_%H:%M)"
             # інший робочий процес міг запушити раніше — підтягуємо й пробуємо ще раз
             for i in 1 2 3; do
@@ -47,7 +51,7 @@ jobs:
               git pull --rebase --autostash origin main || true
               sleep 3
             done
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "changed=$meaningful" >> "$GITHUB_OUTPUT"
           fi
 
   deploy:

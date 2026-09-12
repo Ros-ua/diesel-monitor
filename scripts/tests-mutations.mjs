@@ -146,6 +146,13 @@ const ПІДСАДКИ = [
     стало: "const averages = avgHtml ? parseAverages(avgHtml) : null;",
     стереже: 'збір вцілів',
   },
+  {
+    імя: 'не вважати позначку часу летючою',
+    файл: 'lib/значуще.mjs',
+    було: "  'latest.json': ['collectedAt'],",
+    стало: "  'latest.json': [],",
+    стереже: 'позначка часу знімка НАЗВАНА летючою',
+  },
 ];
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
