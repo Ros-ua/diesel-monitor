@@ -5,7 +5,7 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
@@ -58,7 +58,226 @@ const uaDate = iso => {
   return `${d}.${m}.${y}`;
 };
 
-function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHtml, ctaText = 'Інтерактивний дашборд →' }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// GEO: розмітка JSON-LD і файл llms.txt.
+//
+// НАВІЩО. Пошуковики на базі ШІ (ChatGPT, Perplexity, Claude, огляди Google)
+// НЕ виконують JavaScript: вони читають сирий HTML. Пререндер це вже закрив —
+// на кожній сторінці є справжній текст і таблиця цін. Чого бракувало:
+// машинного опису того, ЩО саме на сторінці (JSON-LD) і карти сайту для
+// мовних моделей (llms.txt). Обидва — дані, а не обіцянки: якщо завтра їх
+// перестануть читати, сайт від цього не постраждає.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Рядок спершу розбираємо, щоб не вставити в сторінку неробочий JSON.
+export function renderJsonLd(jsonLd) {
+  if (jsonLd === undefined || jsonLd === null) return '';
+
+  const value = typeof jsonLd === 'string' ? JSON.parse(jsonLd) : jsonLd;
+  const nodes = Array.isArray(value) ? value : [value];
+
+  if (!nodes.every(node => node && typeof node === 'object' && !Array.isArray(node))) {
+    throw new TypeError('JSON-LD має містити об’єкт або масив об’єктів');
+  }
+  if (!nodes.length) return '';
+
+  // ⚠️ esc() тут НЕ годиться: усередині <script> сутності на кшталт &lt;
+  // не розкодовуються, JSON стане битим. Тому екрануємо через \u….
+  const json = JSON.stringify(nodes)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
+// Дата спостереження для розмітки — рівно YYYY-MM-DD і рівно календарна.
+export function isoDay(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new TypeError(`Очікується дата YYYY-MM-DD, а не ${value}`);
+  }
+  const stamp = Date.parse(`${value}T00:00:00Z`);
+  if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== value) {
+    throw new RangeError(`Некоректна календарна дата: ${value}`);
+  }
+  return value;
+}
+
+export function breadcrumbLd(canonical, trail) {
+  const items = [['Дизель Монітор UA', `${SITE}/`], ...trail];
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    '@id': `${canonical}#breadcrumbs`,
+    itemListElement: items.map(([name, item], i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name,
+      item,
+    })),
+  };
+}
+
+// Ціни в розмітці — ті самі числа, що й у видимій таблиці, з тією ж точністю.
+export function priceVariables(prices, fuelKey) {
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
+    throw new TypeError('Очікується об’єкт цін');
+  }
+  if (fuelKey !== undefined && !FUEL_SEO[fuelKey]) {
+    throw new TypeError(`Невідомий вид пального: ${fuelKey}`);
+  }
+  return FUELS.filter(([k]) => fuelKey === undefined || k === fuelKey)
+    .filter(([k]) => prices[k] !== undefined && prices[k] !== null)
+    .map(([k, label]) => {
+      const v = prices[k];
+      if (!Number.isFinite(v) || v <= 0) throw new TypeError(`Некоректна ціна ${k}: ${v}`);
+      return {
+        '@type': 'PropertyValue',
+        name: `Ціна: ${label}`,
+        value: Number(v.toFixed(2)),
+        unitText: 'грн/л',
+      };
+    });
+}
+
+// Dataset, а не Product+Offer: середня по області не є пропозицією продажу
+// конкретного продавця, і Product цим збрехав би. Dataset описує рівно те,
+// що на сторінці, — таблицю довідкових цін за дату спостереження.
+// ⚠️ `areas` — області, у яких ця мережа є В НАШИХ ДАНИХ. Це не footprint
+// бізнесу: spatialCoverage у Dataset описує охоплення ДАНИХ, а не масштаб
+// компанії. Раніше тут стояло глухе «Україна» для кожної мережі — а 19 мереж
+// із 36 живуть рівно в одній області (померено 20.09.2026). Тобто машині
+// повідомлялося перевірно неправдиве твердження про всю країну. Списку немає —
+// поля немає взагалі: мовчання чесніше за вигадане охоплення.
+export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
+  if (kind !== 'region' && kind !== 'network') throw new TypeError(`Невідомий тип: ${kind}`);
+  if (areas !== undefined && (!Array.isArray(areas) || areas.some(a => typeof a !== 'string' || !a))) {
+    throw new TypeError(`areas має бути списком назв областей, а не ${JSON.stringify(areas)}`);
+  }
+  const iso = isoDay(day);
+  const variables = priceVariables(prices, fuelKey);
+  if (!variables.length) throw new Error(`Немає цін для Dataset: ${kind} ${name}`);
+
+  const isRegion = kind === 'region';
+  const label = isRegion ? `${name} область` : name;
+  const parent = `${SITE}/${kind}/${slugify(name)}/`;
+  const fuel = fuelKey === undefined ? null : FUEL_SEO[fuelKey];
+  const canonical = fuel ? `${parent}${fuel.slug}/` : parent;
+
+  const trail = [[label, parent]];
+  if (fuel) trail.push([fuel.short, canonical]);
+
+  const dataset = {
+    '@context': 'https://schema.org',
+    '@type': 'Dataset',
+    '@id': `${canonical}#dataset`,
+    url: canonical,
+    name: fuel ? `${label} — ${fuel.short}` : `${label} — ціни на пальне`,
+    description:
+      `${isRegion ? 'Середні ціни по області' : 'Довідкові ціни мережі АЗС'} ${label} ` +
+      `станом на ${uaDate(iso)}. Ціни у гривнях за літр; ціна на конкретній АЗС може відрізнятися.`,
+    inLanguage: 'uk',
+    // Дата СПОСТЕРЕЖЕННЯ, а не дата збірки сайту. Розмітка не має обіцяти,
+    // що ціна чинна сьогодні, якщо дані зібрані раніше.
+    temporalCoverage: iso,
+    variableMeasured: variables,
+    creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
+    isAccessibleForFree: true,
+    publisher: { '@type': 'Organization', name: 'Дизель Монітор UA', url: `${SITE}/` },
+  };
+  if (!isRegion) dataset.about = { '@type': 'Organization', name };
+
+  // Охоплення: область — сама собою; мережа — рівно ті області, де ми її бачимо.
+  const місця = isRegion
+    ? [`${label}, Україна`]
+    : (areas ?? []).map(a => `${a} область, Україна`);
+  if (місця.length === 1) {
+    dataset.spatialCoverage = { '@type': 'Place', name: місця[0] };
+  } else if (місця.length) {
+    dataset.spatialCoverage = місця.map(n => ({ '@type': 'Place', name: n }));
+  }
+
+  return [breadcrumbLd(canonical, trail), dataset];
+}
+
+// Екранування для однорядкового посилання Markdown.
+// Круглі дужки теж: у `[текст](адреса)` наївний розбирач обриває посилання на
+// першій же `)`. Назви мереж із дужками сьогодні немає (померено 20.09.2026 —
+// 0 із 36), але страховка коштує один символ у наборі.
+export const md = v => String(v).replace(/\s+/g, ' ').replace(/[\\`*_[\]<>()]/g, '\\$&');
+
+// llms.txt — карта сайту для мовних моделей (llmstxt.org): заголовок, опис
+// одним рядком, розділи зі списками посилань. Формат запропонований, а не
+// стандарт: ніхто не зобов’язаний його читати. Тому файл нічого не замінює.
+export function makeLlms({ day, urls, regionEntries, netEntries, cheapEntries, avg }) {
+  const iso = isoDay(day);
+  const generated = new Set(urls);
+  const groups = new Map();
+
+  // ⚠️ Сторінки, які генератор пропустив (менше 5 записів — `continue`),
+  // у llms.txt не потрапляють: обіцяти неіснуючу адресу гірше, ніж мовчати.
+  const add = (section, title, url, description) => {
+    if (!generated.has(url)) return;
+    if (!groups.has(section)) groups.set(section, []);
+    groups.get(section).push(`- [${md(title)}](${url}): ${md(description)}`);
+  };
+
+  add('Основне', 'Головна — ціни на пальне в Україні', `${SITE}/`,
+    `Середні ціни по країні, ${regionEntries.length} областей і ${netEntries.length} мереж АЗС, історія та прогноз.`);
+  for (const c of cheapEntries) {
+    add('Основне', c.h1, `${SITE}/cheapest/${c.slug}/`,
+      'Де зараз найдешевше: порівняння мереж АЗС і областей.');
+  }
+  add('Основне', 'Зарядки для електромобілів', `${SITE}/ev/`,
+    'Карта зарядних станцій України за даними OpenStreetMap. Не ціни на пальне.');
+
+  for (const name of regionEntries) {
+    add('Області', `${name} область`, `${SITE}/region/${slugify(name)}/`,
+      'Середні ціни на дизель, бензин і автогаз по області та місце в рейтингу України.');
+  }
+  for (const name of netEntries) {
+    add('Мережі АЗС', name, `${SITE}/network/${slugify(name)}/`,
+      'Довідкові ціни мережі на всі види пального і порівняння з іншими мережами.');
+  }
+
+  // Матриці «пальне × область» і «пальне × мережа» — сотні сторінок. За
+  // домовленістю формату дрібне виносять в Optional, щоб головне було видно.
+  for (const name of regionEntries) {
+    for (const [, f] of Object.entries(FUEL_SEO)) {
+      add('Optional', `${f.short} — ${name} область`, `${SITE}/region/${slugify(name)}/${f.slug}/`,
+        `Ціна на ${f.acc} у цій області та рейтинг усіх областей.`);
+    }
+  }
+  for (const name of netEntries) {
+    for (const [, f] of Object.entries(FUEL_SEO)) {
+      add('Optional', `${f.short} — ${name}`, `${SITE}/network/${slugify(name)}/${f.slug}/`,
+        `Ціна на ${f.acc} у цій мережі та рейтинг усіх мереж.`);
+    }
+  }
+
+  const факти = FUELS.filter(([k]) => Number.isFinite(avg[k]))
+    .map(([k, label]) => `- ${label}: ${fmt(avg[k])} грн/л`);
+
+  return [
+    '# Дизель Монітор UA',
+    '',
+    '> Щоденний моніторинг цін на пальне в Україні: дизель, бензин А-95 і А-92, автогаз — по 23 областях і мережах АЗС.',
+    '',
+    `Дата даних: ${uaDate(iso)} (${iso}). Ціни у гривнях за літр.`,
+    'Джерело: Мінфін (Консалтингова група А-95). Ціни довідкові — на конкретній АЗС може відрізнятися.',
+    'Дані оновлює бот щодня; сторінки статичні, JavaScript для читання не потрібен.',
+    '',
+    '## Середні ціни по Україні',
+    '',
+    ...(факти.length ? факти : ['- немає даних у поточному знімку']),
+    '',
+    ...Array.from(groups, ([title, lines]) => `## ${title}\n\n${lines.join('\n')}\n`),
+  ].join('\n');
+}
+
+function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHtml, ctaText = 'Інтерактивний дашборд →', jsonLd }) {
   return `<!doctype html>
 <html lang="uk">
 <head>
@@ -79,6 +298,7 @@ function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHt
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0a0e12">
+${renderJsonLd(jsonLd)}
 <style>
 body{background:#0a0e12;color:#e0ede9;font-family:'Courier New',monospace;margin:0;padding:16px;line-height:1.5}
 .wrap{max-width:860px;margin:0 auto}
@@ -120,6 +340,15 @@ async function main() {
   const networks = latest.networks ?? {};
   const avg = latest.avg ?? {};
   const urls = [`${SITE}/`];
+
+  // Області, де кожну мережу видно в даних, — це і є охоплення її Dataset.
+  const областіМережі = new Map();
+  for (const [region, nets] of Object.entries(regions)) {
+    for (const network of Object.keys(nets)) {
+      if (!областіМережі.has(network)) областіМережі.set(network, []);
+      областіМережі.get(network).push(region);
+    }
+  }
 
   // ── Сторінки областей ──
   const regionEntries = Object.keys(regionAvg).length
@@ -204,6 +433,7 @@ async function main() {
           : ''),
       spaLink: `${SITE}/#/region/${encodeURIComponent(region)}`,
       navHtml: regionNav,
+      jsonLd: pricePageLd({ kind: 'region', name: region, prices, day: latest.date }),
     });
 
     const dir = path.join(DIST, 'region', slug);
@@ -254,6 +484,7 @@ async function main() {
         (regTable ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ДИЗЕЛЬ ПО ОБЛАСТЯХ</div>${regTable}</div>` : ''),
       spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
       navHtml: netNav,
+      jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: latest.networksDate ?? latest.date, areas: областіМережі.get(network) }),
     });
 
     const dir = path.join(DIST, 'network', slug);
@@ -331,6 +562,7 @@ async function main() {
             : ''),
         spaLink: `${SITE}/#/region/${encodeURIComponent(region)}`,
         navHtml: regionNav,
+        jsonLd: pricePageLd({ kind: 'region', name: region, prices: rPrices, day: latest.date, fuelKey: fk }),
       });
 
       const dir = path.join(DIST, 'region', rslug, f.slug);
@@ -395,6 +627,7 @@ async function main() {
           (otherFuels ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ ЦІЄЇ МЕРЕЖІ</div>${otherFuels}</div>` : ''),
         spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
         navHtml: netNav,
+        jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: latest.networksDate ?? latest.date, fuelKey: fk, areas: областіМережі.get(network) }),
       });
 
       const dir = path.join(DIST, 'network', nslug, f.slug);
@@ -447,6 +680,39 @@ async function main() {
   const idxPath = path.join(DIST, 'index.html');
   let idx = await readFile(idxPath, 'utf-8');
   idx = idx.replace('<div id="root"></div>', `<div id="root">${seoHome}</div>`);
+
+  // Розмітка головної. У шаблоні index.html лежить лише WebSite без видавця
+  // і без дати даних — звідси не видно ні хто це рахує, ні на яке число.
+  const homeLd = renderJsonLd([
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      '@id': `${SITE}/#organization`,
+      name: 'Дизель Монітор UA',
+      url: `${SITE}/`,
+      logo: `${SITE}/icon-512.png`,
+      description: 'Щоденний моніторинг цін на пальне в Україні за областями та мережами АЗС.',
+      knowsAbout: ['ціни на дизельне пальне', 'ціни на бензин', 'ціни на автогаз', 'мережі АЗС України', 'паливний ринок України'],
+      sameAs: ['https://www.instagram.com/diesel.monitor.ua/', 'https://t.me/diesel_monitor_ua'],
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Dataset',
+      '@id': `${SITE}/#dataset`,
+      url: `${SITE}/`,
+      name: 'Ціни на пальне в Україні — середні по країні, областях і мережах АЗС',
+      description: `Середні ціни на дизель, бензин А-95, А-92 та автогаз в Україні станом на ${date}. ${Object.keys(regionAvg).length || Object.keys(regions).length} областей, ${Object.keys(networks).length} мереж АЗС. Оновлюється щодня.`,
+      inLanguage: 'uk',
+      temporalCoverage: isoDay(latest.date),
+      spatialCoverage: { '@type': 'Place', name: 'Україна' },
+      variableMeasured: priceVariables(avg),
+      creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
+      isAccessibleForFree: true,
+      publisher: { '@id': `${SITE}/#organization` },
+    },
+  ]);
+  if (!idx.includes('</head>')) throw new Error('index.html без </head>');
+  idx = idx.replace('</head>', `${homeLd}\n  </head>`);
   await writeFile(idxPath, idx);
 
   // ── Сторінки «де найдешевше» під запити «де найдешевший бензин/дизель» ──
@@ -530,6 +796,7 @@ async function main() {
         `<div class="card"><p style="font-size:11px;color:#5a7a72;margin:0">Ціни довідкові (дані Мінфіну / Консалтингової групи А-95), оновлюються щодня. Ціна на конкретній АЗС може відрізнятись — уточнюйте на місці або в застосунку мережі.</p></div>`,
       spaLink: `${SITE}/`,
       ctaText: 'Усі ціни, графіки та прогноз →',
+      jsonLd: [breadcrumbLd(`${SITE}/cheapest/${c.slug}/`, [[c.h1, `${SITE}/cheapest/${c.slug}/`]])],
       navHtml: cheapNav + '<br><br>' + regionNav,
     });
 
@@ -579,6 +846,7 @@ async function main() {
         `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">МЕРЕЖІ ЗАРЯДОК УКРАЇНИ</div><table><tr><th>Мережа</th><th>Станцій</th><th></th></tr>${netRows}</table></div>`,
       spaLink: `${SITE}/#/ev`,
       ctaText: 'Відкрити інтерактивну карту →',
+      jsonLd: [breadcrumbLd(`${SITE}/ev/`, [['Зарядки для електромобілів', `${SITE}/ev/`]])],
       navHtml: '<b style="font-size:9px;letter-spacing:.12em;color:#5a7a72">РОЗДІЛИ</b><br><a href="' + SITE + '/">Ціни на пальне</a> · <a href="' + SITE + '/#/ev">Інтерактивна карта зарядок</a>',
     });
     await mkdir(path.join(DIST, 'ev'), { recursive: true });
@@ -591,6 +859,21 @@ async function main() {
 
   // статичні сторінки
   urls.push(`${SITE}/widget/`, `${SITE}/privacy/`);
+
+  // ── llms.txt — карта сайту для мовних моделей ──
+  await writeFile(
+    path.join(DIST, 'llms.txt'),
+    makeLlms({
+      day: latest.date,
+      urls,
+      regionEntries,
+      netEntries,
+      cheapEntries: CHEAP,
+      avg,
+    }),
+    'utf-8'
+  );
+  console.log('llms.txt: карта для мовних моделей');
 
   // ── Повний sitemap ──
   const today = new Date().toISOString().slice(0, 10);
@@ -608,7 +891,11 @@ async function main() {
   console.log(`prerender: ${urls.length - 1} сторінок (${Object.keys(regions).length} областей, ${Object.keys(networks).length} мереж) + sitemap`);
 }
 
-main().catch(e => {
-  console.error('prerender ЗБІЙ:', e);
-  process.exit(1);
-});
+// Збірку запускаємо ЛИШЕ коли файл викликали як скрипт. Інакше проби не
+// змогли б імпортувати звідси жодної функції: імпорт запускав би пререндер.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(e => {
+    console.error('prerender ЗБІЙ:', e);
+    process.exit(1);
+  });
+}
