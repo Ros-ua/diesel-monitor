@@ -186,6 +186,19 @@ export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
     creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
     isAccessibleForFree: true,
     publisher: { '@type': 'Organization', name: 'Дизель Монітор UA', url: `${SITE}/` },
+    // Творець набору — сам сайт: це наша збірка (вибір, розкладка, дата), а
+    // першоджерело цін назване в creditText. Для сторінки МЕРЕЖІ творець теж
+    // ми, а не мережа: мережа — предмет набору, вона стоїть в about. Поле
+    // попросив Search Console 23.09.2026 («відсутнє поле creator»).
+    // ⚠️ Той самий @id, що й у вузла Organization на головній (siteLd): інакше
+    // для графа це дві різні організації з однаковим ім'ям. Знахідка роя,
+    // згода двох моделей незалежно (23.09.2026).
+    creator: {
+      '@type': 'Organization',
+      '@id': `${SITE}/#organization`,
+      name: 'Дизель Монітор UA',
+      url: `${SITE}/`,
+    },
   };
   if (!isRegion) dataset.about = { '@type': 'Organization', name };
 
@@ -206,6 +219,47 @@ export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
 // Круглі дужки теж: у `[текст](адреса)` наївний розбирач обриває посилання на
 // першій же `)`. Назви мереж із дужками сьогодні немає (померено 20.09.2026 —
 // 0 із 36), але страховка коштує один символ у наборі.
+/**
+ * Розмітка головної: хто ми (Organization) і що публікуємо (Dataset).
+ *
+ * Винесено з main() 23.09.2026, щоб проба могла ПОКЛИКАТИ це, а не шукати
+ * текст у збірці (CLAUDE.md §4а: «питай у коду викликом»). Поля — рівно ті,
+ * що стояли вбудованими, плюс `creator`, якого попросив Search Console.
+ * Творець і видавець — посилання на ОДИН вузол Organization у цьому ж масиві;
+ * проба стереже, щоб посилання не висіло.
+ */
+export function siteLd({ day, date, avg, regionCount, networkCount }) {
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      '@id': `${SITE}/#organization`,
+      name: 'Дизель Монітор UA',
+      url: `${SITE}/`,
+      logo: `${SITE}/icon-512.png`,
+      description: 'Щоденний моніторинг цін на пальне в Україні за областями та мережами АЗС.',
+      knowsAbout: ['ціни на дизельне пальне', 'ціни на бензин', 'ціни на автогаз', 'мережі АЗС України', 'паливний ринок України'],
+      sameAs: ['https://www.instagram.com/diesel.monitor.ua/', 'https://t.me/diesel_monitor_ua'],
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Dataset',
+      '@id': `${SITE}/#dataset`,
+      url: `${SITE}/`,
+      name: 'Ціни на пальне в Україні — середні по країні, областях і мережах АЗС',
+      description: `Середні ціни на дизель, бензин А-95, А-92 та автогаз в Україні станом на ${date}. ${regionCount} областей, ${networkCount} мереж АЗС. Оновлюється щодня.`,
+      inLanguage: 'uk',
+      temporalCoverage: day,
+      spatialCoverage: { '@type': 'Place', name: 'Україна' },
+      variableMeasured: priceVariables(avg),
+      creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
+      isAccessibleForFree: true,
+      publisher: { '@id': `${SITE}/#organization` },
+      creator: { '@id': `${SITE}/#organization` },
+    },
+  ];
+}
+
 export const md = v => String(v).replace(/\s+/g, ' ').replace(/[\\`*_[\]<>()]/g, '\\$&');
 
 // llms.txt — карта сайту для мовних моделей (llmstxt.org): заголовок, опис
@@ -683,34 +737,13 @@ async function main() {
 
   // Розмітка головної. У шаблоні index.html лежить лише WebSite без видавця
   // і без дати даних — звідси не видно ні хто це рахує, ні на яке число.
-  const homeLd = renderJsonLd([
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Organization',
-      '@id': `${SITE}/#organization`,
-      name: 'Дизель Монітор UA',
-      url: `${SITE}/`,
-      logo: `${SITE}/icon-512.png`,
-      description: 'Щоденний моніторинг цін на пальне в Україні за областями та мережами АЗС.',
-      knowsAbout: ['ціни на дизельне пальне', 'ціни на бензин', 'ціни на автогаз', 'мережі АЗС України', 'паливний ринок України'],
-      sameAs: ['https://www.instagram.com/diesel.monitor.ua/', 'https://t.me/diesel_monitor_ua'],
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Dataset',
-      '@id': `${SITE}/#dataset`,
-      url: `${SITE}/`,
-      name: 'Ціни на пальне в Україні — середні по країні, областях і мережах АЗС',
-      description: `Середні ціни на дизель, бензин А-95, А-92 та автогаз в Україні станом на ${date}. ${Object.keys(regionAvg).length || Object.keys(regions).length} областей, ${Object.keys(networks).length} мереж АЗС. Оновлюється щодня.`,
-      inLanguage: 'uk',
-      temporalCoverage: isoDay(latest.date),
-      spatialCoverage: { '@type': 'Place', name: 'Україна' },
-      variableMeasured: priceVariables(avg),
-      creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
-      isAccessibleForFree: true,
-      publisher: { '@id': `${SITE}/#organization` },
-    },
-  ]);
+  const homeLd = renderJsonLd(siteLd({
+    day: isoDay(latest.date),
+    date,
+    avg,
+    regionCount: Object.keys(regionAvg).length || Object.keys(regions).length,
+    networkCount: Object.keys(networks).length,
+  }));
   if (!idx.includes('</head>')) throw new Error('index.html без </head>');
   idx = idx.replace('</head>', `${homeLd}\n  </head>`);
   await writeFile(idxPath, idx);

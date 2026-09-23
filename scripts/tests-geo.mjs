@@ -19,6 +19,7 @@ import {
   breadcrumbLd,
   priceVariables,
   pricePageLd,
+  siteLd,
   makeLlms,
 } from './prerender.mjs';
 
@@ -246,6 +247,49 @@ const ДЕНЬ = '2026-09-15';
   () => pricePageLd({ kind: 'city', name: 'Львів', prices: ЦІНИ, day: ДЕНЬ }));
 падіння('дата збірки замість дати даних',
   () => pricePageLd({ kind: 'region', name: 'Львівська', prices: ЦІНИ, day: new Date() }));
+
+// ─── creator (Search Console, 23.09.2026) ────────────────────────────────────
+// ⚠️ Search Console попросив поле creator в обох Dataset. Творець — сам сайт:
+// це наша збірка, а першоджерело цін назване в creditText.
+
+{
+  const [, dataset] = pricePageLd({ kind: 'region', name: 'Львівська', prices: ЦІНИ, day: ДЕНЬ });
+  проба('область: творець — організація', dataset.creator?.['@type'], 'Organization');
+  проба('область: творець — наш домен', dataset.creator?.url, 'https://diesel-monitor.pp.ua/');
+  // ⚠️ Ідентичність — СПРАВЖНЯ: звіряємо з тим @id, що віддає siteLd, а не з
+  // константою. Розійдуться — у графа знову дві організації.
+  const орг = siteLd({ day: ДЕНЬ, date: '15.09.2026', avg: ЦІНИ, regionCount: 1, networkCount: 1 })
+    .find(n => n['@type'] === 'Organization');
+  проба('область: творець — той самий вузол, що й на головній',
+    dataset.creator?.['@id'], орг?.['@id']);
+}
+
+{
+  // ⚠️ Мережа — ПРЕДМЕТ набору (вона в about), а не його творець. Підміна
+  // творця на мережу сказала б машині, що ці ціни опублікувала ОККО.
+  const [, dataset] = pricePageLd({ kind: 'network', name: 'ОККО', prices: ЦІНИ, day: ДЕНЬ });
+  проба('мережа: творець — наш домен', dataset.creator?.url, 'https://diesel-monitor.pp.ua/');
+  проба('мережа: творець — сайт, а не мережа', dataset.creator?.name, 'Дизель Монітор UA');
+}
+
+{
+  const вузли = siteLd({ day: ДЕНЬ, date: '15.09.2026', avg: ЦІНИ, regionCount: 25, networkCount: 36 });
+  const dataset = вузли.find(n => n['@type'] === 'Dataset');
+  const орг = вузли.find(n => n['@type'] === 'Organization');
+
+  проба('сайт: творець — посилання на нашу організацію',
+    dataset.creator?.['@id'], 'https://diesel-monitor.pp.ua/#organization');
+  // ⚠️ Посилання не мусить ВИСІТИ: звіряємо творця з вузлом, що справді
+  // лежить у тому ж масиві, а не кожен із константою. Інакше узгоджена заміна
+  // обох (@id організації і посилання) пройде, а поламане посилання — ні.
+  істина('сайт: посилання творця веде на вузол у тому ж масиві',
+    орг !== undefined && орг['@id'] === dataset.creator?.['@id']);
+  // Решта полів при винесенні з main() не мусила зрушити.
+  проба('сайт: дата даних — день спостереження', dataset.temporalCoverage, ДЕНЬ);
+  проба('сайт: ціни всередині', dataset.variableMeasured.length, 5);
+  істина('сайт: числа областей і мереж в описі',
+    dataset.description.includes('25 областей') && dataset.description.includes('36 мереж'));
+}
 
 // ─── makeLlms ────────────────────────────────────────────────────────────────
 
