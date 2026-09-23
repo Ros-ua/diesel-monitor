@@ -262,6 +262,8 @@ const ДЕНЬ = '2026-09-15';
     .find(n => n['@type'] === 'Organization');
   проба('область: творець — той самий вузол, що й на головній',
     dataset.creator?.['@id'], орг?.['@id']);
+  проба('область: видавець — той самий вузол, що й на головній',
+    dataset.publisher?.['@id'], орг?.['@id']);
 }
 
 {
@@ -270,6 +272,10 @@ const ДЕНЬ = '2026-09-15';
   const [, dataset] = pricePageLd({ kind: 'network', name: 'ОККО', prices: ЦІНИ, day: ДЕНЬ });
   проба('мережа: творець — наш домен', dataset.creator?.url, 'https://diesel-monitor.pp.ua/');
   проба('мережа: творець — сайт, а не мережа', dataset.creator?.name, 'Дизель Монітор UA');
+  const орг = siteLd({ day: ДЕНЬ, date: '15.09.2026', avg: ЦІНИ, regionCount: 1, networkCount: 1 })
+    .find(n => n['@type'] === 'Organization');
+  проба('мережа: видавець — той самий вузол, що й на головній',
+    dataset.publisher?.['@id'], орг?.['@id']);
 }
 
 {

@@ -42,10 +42,16 @@ const ПІДСАДКИ = [
   {
     імя: 'назвати творцем мережу, а не сайт',
     файл: 'prerender.mjs',
-    було: `      name: 'Дизель Монітор UA',
+    було: `    creator: {
+      '@type': 'Organization',
+      '@id': \`\${SITE}/#organization\`,
+      name: 'Дизель Монітор UA',
       url: \`\${SITE}/\`,
     },`,
-    стало: `      name,
+    стало: `    creator: {
+      '@type': 'Organization',
+      '@id': \`\${SITE}/#organization\`,
+      name,
       url: \`\${SITE}/\`,
     },`,
     стереже: 'мережа: творець — сайт, а не мережа',
@@ -54,16 +60,29 @@ const ПІДСАДКИ = [
   {
     імя: 'лишити творця сторінок без спільного @id',
     файл: 'prerender.mjs',
-    було: `      '@type': 'Organization',
+    було: `    creator: {
+      '@type': 'Organization',
       '@id': \`\${SITE}/#organization\`,
       name: 'Дизель Монітор UA',
       url: \`\${SITE}/\`,
     },`,
-    стало: `      '@type': 'Organization',
+    стало: `    creator: {
+      '@type': 'Organization',
       name: 'Дизель Монітор UA',
       url: \`\${SITE}/\`,
     },`,
     стереже: 'область: творець — той самий вузол, що й на головній',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'лишити видавця сторінок без спільного @id',
+    файл: 'prerender.mjs',
+    було: `    publisher: {
+      '@type': 'Organization',
+      '@id': \`\${SITE}/#organization\`,`,
+    стало: `    publisher: {
+      '@type': 'Organization',`,
+    стереже: 'область: видавець — той самий вузол, що й на головній',
     сюїта: 'tests-geo.mjs',
   },
   {

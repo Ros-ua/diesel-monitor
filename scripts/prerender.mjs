@@ -185,7 +185,14 @@ export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
     variableMeasured: variables,
     creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
     isAccessibleForFree: true,
-    publisher: { '@type': 'Organization', name: 'Дизель Монітор UA', url: `${SITE}/` },
+    // ⚠️ Видавець — той самий вузол Organization, що й на головній (siteLd):
+    // без @id це була б ще одна анонімна організація з тим самим ім'ям.
+    publisher: {
+      '@type': 'Organization',
+      '@id': `${SITE}/#organization`,
+      name: 'Дизель Монітор UA',
+      url: `${SITE}/`,
+    },
     // Творець набору — сам сайт: це наша збірка (вибір, розкладка, дата), а
     // першоджерело цін назване в creditText. Для сторінки МЕРЕЖІ творець теж
     // ми, а не мережа: мережа — предмет набору, вона стоїть в about. Поле
