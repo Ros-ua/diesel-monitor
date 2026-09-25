@@ -394,6 +394,13 @@ ${bodyHtml}
 async function main() {
   const latest = JSON.parse(await readFile(path.join(ROOT, 'public', 'data', 'latest.json'), 'utf-8'));
   const date = uaDate(latest.date);
+  // ⚠️ Ціни мереж мають СВОЮ дату: networksDate — день, коли карту мереж реально
+  // зібрали. Якщо /tm/ обвалився, collect лишає вчорашню карту з її датою, а
+  // latest.date — це дата сторінки середніх цін. Раніше сторінки мереж писали
+  // людині «оновлено <latest.date>», а машині (Dataset) — networksDate: людина
+  // бачила «сьогодні» над вчорашніми цінами. Тепер обидві беруть ОДНУ дату.
+  const netDay = latest.networksDate ?? latest.date;
+  const netDate = uaDate(netDay);
   // regionAvg — свіжі середні по областях (/reg/). regions — стара матриця
   // «область × мережа», Мінфін прибрав її 29.07.2026 і більше не оновлює.
   const regionAvg = latest.regionAvg ?? {};
@@ -535,17 +542,17 @@ async function main() {
       : '';
 
     const html = page({
-      title: `${network} — ціни на пальне сьогодні: дизель, бензин, автогаз (${date})`,
-      description: `Ціни ${network} на ${date}: дизель ${fmt(prices.dp)} грн/л${prices.a95 !== undefined ? `, А-95 ${fmt(prices.a95)}` : ''}${prices.gas !== undefined ? `, автогаз ${fmt(prices.gas)}` : ''}. Медіана по областях присутності, оновлюється щодня.`,
+      title: `${network} — ціни на пальне сьогодні: дизель, бензин, автогаз (${netDate})`,
+      description: `Ціни ${network} на ${netDate}: дизель ${fmt(prices.dp)} грн/л${prices.a95 !== undefined ? `, А-95 ${fmt(prices.a95)}` : ''}${prices.gas !== undefined ? `, автогаз ${fmt(prices.gas)}` : ''}. Медіана по областях присутності, оновлюється щодня.`,
       canonical: `${SITE}/network/${slug}/`,
       h1: `${network} — ціни на пальне`,
-      sub: `оновлено ${date} · національна ціна = медіана по областях`,
+      sub: `оновлено ${netDate} · національна ціна = медіана по областях`,
       bodyHtml:
         `<div class="card">${natTable}</div>` +
         (regTable ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ДИЗЕЛЬ ПО ОБЛАСТЯХ</div>${regTable}</div>` : ''),
       spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
       navHtml: netNav,
-      jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: latest.networksDate ?? latest.date, areas: областіМережі.get(network) }),
+      jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, areas: областіМережі.get(network) }),
     });
 
     const dir = path.join(DIST, 'network', slug);
@@ -675,20 +682,20 @@ async function main() {
         .join(' ');
 
       const html = page({
-        title: `${network} ${f.short} — ціна сьогодні, ${date}`,
-        description: `${network}: ${f.acc} ${fmt(prices[fk])} грн/л станом на ${date} — ${pos} місце з ${netRows.length} мереж. Найдешевше ${cheapest} (${fmt(min)}). Оновлення щодня.`,
+        title: `${network} ${f.short} — ціна сьогодні, ${netDate}`,
+        description: `${network}: ${f.acc} ${fmt(prices[fk])} грн/л станом на ${netDate} — ${pos} місце з ${netRows.length} мереж. Найдешевше ${cheapest} (${fmt(min)}). Оновлення щодня.`,
         canonical: `${SITE}/network/${nslug}/${f.slug}/`,
         h1: `${network} — ${f.short}`,
-        sub: `${date} · ${fmt(prices[fk])} грн/л · ${pos} місце з ${netRows.length}`,
+        sub: `${netDate} · ${fmt(prices[fk])} грн/л · ${pos} місце з ${netRows.length}`,
         bodyHtml:
           `<div class="card">` +
-          `<p>Ціна на ${f.acc} у мережі <b>${esc(network)}</b> станом на ${date} — <b>${fmt(prices[fk])}</b> грн/л. ` +
+          `<p>Ціна на ${f.acc} у мережі <b>${esc(network)}</b> станом на ${netDate} — <b>${fmt(prices[fk])}</b> грн/л. ` +
           `Це <b>${pos} місце з ${netRows.length}</b> серед мереж АЗС України: найдешевше в ${esc(cheapest)} (${fmt(min)} грн/л), найдорожче — ${fmt(max)} грн/л.</p>` +
           `${table}</div>` +
           (otherFuels ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ ЦІЄЇ МЕРЕЖІ</div>${otherFuels}</div>` : ''),
         spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
         navHtml: netNav,
-        jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: latest.networksDate ?? latest.date, fuelKey: fk, areas: областіМережі.get(network) }),
+        jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, fuelKey: fk, areas: областіМережі.get(network) }),
       });
 
       const dir = path.join(DIST, 'network', nslug, f.slug);

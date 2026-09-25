@@ -13,6 +13,11 @@
  *
  * ЗАПУСК:  node scripts/tests-geo.mjs
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   renderJsonLd,
   isoDay,
@@ -351,6 +356,64 @@ const ВХІД = {
 
 падіння('llms.txt не будується на даті збірки', () => makeLlms({ ...ВХІД, day: new Date() }));
 падіння('llms.txt не будується на українській даті', () => makeLlms({ ...ВХІД, day: '15.09.2026' }));
+
+// ─── одна дата на сторінках мереж (наскрізно) ───────────────────────────────
+// ⚠️ Видима дата і дата розмітки на сторінках мереж мусять бути ОДНІЄЮ — днем
+// карти мереж (networksDate). Перевіряємо ПОВЕДІНКУ: рендеримо справжні сторінки
+// у своїй тимчасовій теці (копія prerender.mjs бере корінь від свого місця), а не
+// шукаємо рядок у коді. Карта мереж тут навмисно застаріла: 15.09 проти 24.09.
+{
+  const тека = fs.mkdtempSync(path.join(os.tmpdir(), 'geo-net-date-'));
+  try {
+    const копія = path.join(тека, 'scripts', 'prerender.mjs');
+    fs.mkdirSync(path.dirname(копія), { recursive: true });
+    fs.mkdirSync(path.join(тека, 'public', 'data'), { recursive: true });
+    fs.mkdirSync(path.join(тека, 'dist'), { recursive: true });
+    fs.copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'prerender.mjs'), копія);
+    fs.writeFileSync(path.join(тека, 'public', 'data', 'latest.json'), JSON.stringify({
+      date: '2026-09-24',
+      networksDate: '2026-09-15',
+      avg: { dp: 60, a95: 55, a92: 52, gas: 30 },
+      avgChange: {},
+      // Сторінку «мережа × паливо» пререндер будує лише коли мереж із цим
+      // пальним щонайменше 5 — інакше немає з чим порівнювати.
+      networks: {
+        'ОККО': { dp: 61, a95: 56, gas: 31 }, 'WOG': { dp: 62, a95: 57, gas: 32 },
+        'SOCAR': { dp: 63, a95: 58, gas: 33 }, 'UPG': { dp: 60, a95: 55, gas: 30 },
+        'БРСМ-Нафта': { dp: 59, a95: 54, gas: 29 },
+      },
+      regionAvg: { 'Львівська': { dp: 59 } },
+      regions: {},
+    }));
+    fs.writeFileSync(path.join(тека, 'dist', 'index.html'),
+      '<!doctype html><html><head></head><body><div id="root"></div></body></html>');
+    execFileSync(process.execPath, [копія], { stdio: 'pipe' });
+
+    const читати = (...ч) => fs.readFileSync(path.join(тека, 'dist', ...ч, 'index.html'), 'utf-8');
+    const мережа = читати('network', 'okko');
+    const дизель = читати('network', 'okko', 'dyzel');
+    const область = читати('region', 'lvivska');
+
+    істина('мережа: «оновлено» — дата карти мереж', мережа.includes('оновлено 15.09.2026'));
+    істина('мережа: ніде немає загальної дати', !мережа.includes('24.09.2026'));
+    // ⚠️ «станом на 15.09» тут окремо НЕ перевіряємо: та сама фраза стоїть і в
+    // мета-описі, тож проба лишилась би зеленою, коли дату поверне лише текст.
+    істина('мережа×паливо: ніде немає загальної дати', !дизель.includes('24.09.2026'));
+    істина('мережа×паливо: дата карти мереж на місці', дизель.includes('15.09.2026'));
+
+    const ld = [...мережа.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+      .flatMap(m => JSON.parse(m[1]));
+    проба('мережа: у розмітці — дата карти мереж',
+      ld.find(n => n['@type'] === 'Dataset')?.temporalCoverage, '2026-09-15');
+
+    // Контроль, що правка не розлилась: область лишається на даті середніх цін.
+    істина('область: лишається на даті середніх цін', область.includes('оновлено 24.09.2026'));
+  } catch (e) {
+    істина('наскрізний рендер сторінок мереж не впав: ' + e.message.split('\n')[0], false);
+  } finally {
+    fs.rmSync(тека, { recursive: true, force: true });
+  }
+}
 
 // ─── підсумок ────────────────────────────────────────────────────────────────
 
