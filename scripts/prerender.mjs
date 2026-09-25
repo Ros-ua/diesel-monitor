@@ -401,6 +401,12 @@ async function main() {
   // бачила «сьогодні» над вчорашніми цінами. Тепер обидві беруть ОДНУ дату.
   const netDay = latest.networksDate ?? latest.date;
   const netDate = uaDate(netDay);
+  // ⚠️ Таблиця «ДИЗЕЛЬ ПО ОБЛАСТЯХ» на сторінках мереж — з матриці /detail/, у неї
+  // СВОЯ дата breakdownDate (не зібрався /detail/ — лишається стара матриця зі старою
+  // датою). Під «оновлено {дата мереж}» вона мовчки показала б старіші ціни, тож
+  // коли її дата інша — підписуємо таблицю її датою; коли та сама — не шумимо.
+  const regDay = latest.breakdownDate ?? latest.date;
+  const regNote = regDay !== netDay ? ` · станом на ${uaDate(regDay)}` : '';
   // regionAvg — свіжі середні по областях (/reg/). regions — стара матриця
   // «область × мережа», Мінфін прибрав її 29.07.2026 і більше не оновлює.
   const regionAvg = latest.regionAvg ?? {};
@@ -549,7 +555,7 @@ async function main() {
       sub: `оновлено ${netDate} · національна ціна = медіана по областях`,
       bodyHtml:
         `<div class="card">${natTable}</div>` +
-        (regTable ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ДИЗЕЛЬ ПО ОБЛАСТЯХ</div>${regTable}</div>` : ''),
+        (regTable ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ДИЗЕЛЬ ПО ОБЛАСТЯХ${regNote}</div>${regTable}</div>` : ''),
       spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
       navHtml: netNav,
       jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, areas: областіМережі.get(network) }),
