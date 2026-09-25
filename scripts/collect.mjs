@@ -24,8 +24,10 @@ const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 
 // 29.07.2026 Мінфін розділив сторінку /detail/ (матриця «область × мережа») на
 // дві окремі: /tm/ — ціни по мережах АЗС, /reg/ — середні по областях.
-// Розбивки «яка мережа почому в конкретній області» більше не публікують.
-// /detail/ поки лишаємо в опитуванні — раптом повернуть.
+// Розбивку «яка мережа почому в конкретній області» тоді прибрали, і /detail/
+// лишили в опитуванні — раптом повернуть. ⚠️ ПОВЕРНУЛИ: щонайпізніше 21.09.2026
+// сторінка /detail/ розбиралась у 23 області і 198 пар, а 24.09 breakdownDate
+// дорівнював даті збору. Тобто матриця знову свіжа, коли /detail/ відповідає.
 const TM_URL = 'https://index.minfin.com.ua/ua/markets/fuel/tm/';
 const REG_URL = 'https://index.minfin.com.ua/ua/markets/fuel/reg/';
 const DETAIL_URL = 'https://index.minfin.com.ua/ua/markets/fuel/detail/';
@@ -172,8 +174,10 @@ async function main() {
     // із сайту, а це гірше за трохи застарілі цифри з чесною позначкою.
     const keepNetworks = вибір.мережі;
     const keepRegions = detail?.regions ?? prev?.regions;
-    // дата матриці «область × мережа» — вона застигла на 28.07.2026,
-    // коли Мінфін прибрав /detail/; середні по областях беремо з /reg/
+    // дата матриці «область × мережа»: свіжа, коли /detail/ відповів цього разу,
+    // інакше — дата тієї старої матриці, яку лишаємо. (З 28.07 по вересень 2026
+    // /detail/ не публікувався і матриця стояла; тепер його повернули.)
+    // Середні по областях беремо з /reg/.
     const breakdownDate = detail ? pageDate : prev?.breakdownDate ?? prev?.date;
 
     const latest = {
@@ -186,7 +190,7 @@ async function main() {
       ...(вибір.дата && { networksDate: вибір.дата }),
       // середні ціни по областях — свіже джерело /reg/
       ...(regionAvg && { regionAvg }),
-      // стара матриця «область × мережа» — заморожена на breakdownDate
+      // матриця «область × мережа» — станом на breakdownDate
       ...(keepRegions && { regions: keepRegions }),
       ...(breakdownDate && { breakdownDate }),
       ...(usd !== null && { usd }),

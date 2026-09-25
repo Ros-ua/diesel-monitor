@@ -407,8 +407,10 @@ async function main() {
   // коли її дата інша — підписуємо таблицю її датою; коли та сама — не шумимо.
   const regDay = latest.breakdownDate ?? latest.date;
   const regNote = regDay !== netDay ? ` · станом на ${uaDate(regDay)}` : '';
-  // regionAvg — свіжі середні по областях (/reg/). regions — стара матриця
-  // «область × мережа», Мінфін прибрав її 29.07.2026 і більше не оновлює.
+  // regionAvg — свіжі середні по областях (/reg/). regions — матриця
+  // «область × мережа» з /detail/, станом на breakdownDate. З 29.07 по вересень
+  // 2026 Мінфін її не публікував; тепер повернув, і вона свіжа, коли /detail/
+  // відповідає (див. regNote вище).
   const regionAvg = latest.regionAvg ?? {};
   const regions = latest.regions ?? {};
   const networks = latest.networks ?? {};
