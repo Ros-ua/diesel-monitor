@@ -64,6 +64,30 @@ const ПІДСАДКИ = [
     сюїта: 'tests-geo.mjs',
   },
   {
+    імя: 'без breakdownDate брати для таблиці дату мереж',
+    файл: 'prerender.mjs',
+    було: `  const regDay = latest.breakdownDate ?? latest.date;`,
+    стало: `  const regDay = latest.breakdownDate ?? netDay;`,
+    стереже: 'мережа: без дати матриці таблиця підписана датою середніх цін',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'не підписувати таблицю, свіжішу за карту мереж',
+    файл: 'prerender.mjs',
+    було: `  const regNote = regDay !== netDay ? \` · станом на \${uaDate(regDay)}\` : '';`,
+    стало: `  const regNote = regDay !== netDay && regDay !== latest.date ? \` · станом на \${uaDate(regDay)}\` : '';`,
+    стереже: 'мережа: таблиця, свіжіша за карту мереж, підписана своєю датою',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'брати для розмітки мережа×паливо дату середніх цін',
+    файл: 'prerender.mjs',
+    було: `day: netDay, fuelKey: fk,`,
+    стало: `day: latest.date, fuelKey: fk,`,
+    стереже: 'мережа×паливо: у розмітці — дата карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
     імя: 'прибрати творця зі сторінок областей і мереж',
     файл: 'prerender.mjs',
     було: `    // ⚠️ Той самий @id, що й у вузла Organization на головній (siteLd): інакше
