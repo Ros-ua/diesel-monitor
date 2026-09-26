@@ -137,7 +137,7 @@ const СЦЕНАРІЇ = [
     чекаємо: (з) => [
       ['EUR записано', з.latest?.eur, 48.1],
       ['Brent записано', з.latest?.brent, 80.5],
-      ['тривог немає', з.журнал?.тривоги, undefined],
+      ['журнал без тривог', з.журнал?.тривоги, undefined],
     ],
   },
   {
@@ -169,7 +169,7 @@ const СЦЕНАРІЇ = [
     імя: 'EUR = 24,81: у межах гривні, але не сходиться з USD',
     мережа: { нбу_eur: { тіло: JSON.stringify([нбу('EUR', 24.81)]) } },
     чекаємо: (з) => [
-      ['EUR НЕ записано', з.latest?.eur, undefined],
+      ['EUR, що не сходиться з USD, НЕ записано', з.latest?.eur, undefined],
     ],
   },
   {
@@ -195,7 +195,7 @@ const СЦЕНАРІЇ = [
     імя: 'Yahoo віддає інший інструмент (WTI)',
     мережа: { brent: { тіло: brentТіло([78.2], { symbol: 'CL=F', currency: 'USD' }) } },
     чекаємо: (з) => [
-      ['Brent НЕ записано', з.latest?.brent, undefined],
+      ['WTI НЕ записано як Brent', з.latest?.brent, undefined],
     ],
   },
   {
