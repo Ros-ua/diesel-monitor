@@ -348,6 +348,18 @@ async function buildCard() {
  * «Дешевше за все», а 26.09.2026 для газу виходила Сумська — 21-е місце з 23.
  * Слово Роса: «Подписывать честно (Recommended)».
  */
+/**
+ * Підпис денної зміни ціни в пості-новині.
+ *
+ * ⚠️ avgChange — різниця з ПОПЕРЕДНІМ днем (замір 26.09: a95p −0,56 = 25.09 мінус
+ * 24.09; за тиждень було б +0,36), а підпис казав «за тиждень». Слово Роса 26.09:
+ * «Почини все три (Recommended)».
+ */
+export function підписЗміни(ch, f) {
+  if (ch === undefined || Math.abs(ch) < 0.005) return '';
+  return ch > 0 ? ` (за добу +${f(ch)})` : ` (за добу −${f(Math.abs(ch))})`;
+}
+
 export function підписНайдешевшого(latest, fuel) {
   const f = v => v.toFixed(2).replace('.', ',');
   const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
@@ -405,8 +417,7 @@ async function publish() {
     const fuel = pick.fuel && latest?.avg?.[pick.fuel] !== undefined ? pick.fuel : 'dp';
     if (latest?.avg?.[fuel] !== undefined) {
       const ch = latest.avgChange?.[fuel];
-      const chTxt = ch === undefined || Math.abs(ch) < 0.005 ? ''
-        : ch > 0 ? ` (за тиждень +${f(ch)})` : ` (за тиждень −${f(Math.abs(ch))})`;
+      const chTxt = підписЗміни(ch, f);
       const others = Object.entries(FUEL_LABELS)
         .filter(([k]) => k !== fuel && latest.avg[k] !== undefined)
         .slice(0, 3)

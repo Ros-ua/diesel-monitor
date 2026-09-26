@@ -183,13 +183,23 @@ function slideTrend(latest, history, ctx) {
     `<text x="70" y="200" font-family="'Courier New',monospace" font-size="50" font-weight="bold" fill="${TXT}">Як змінювалась ціна</text>
      <text x="70" y="252" font-family="'Courier New',monospace" font-size="30" fill="${MUT}">дизель, останні ${spanDays} днів</text>
      <polyline points="${line}" fill="none" stroke="${AC}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
-     <text x="70" y="720" font-family="'Courier New',monospace" font-size="44" font-weight="bold" fill="${up ? RED : AC}">${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн (${up ? '+' : '−'}${Math.abs(pct).toFixed(1)}%)</text>
+     <text x="70" y="720" font-family="'Courier New',monospace" font-size="44" font-weight="bold" fill="${up ? RED : AC}">${рядокЗміниКаруселі(diff, pct)}</text>
      <text x="70" y="800" font-family="'Courier New',monospace" font-size="34" fill="${MUT}">Ціни по всіх мережах і областях,</text>
      <text x="70" y="848" font-family="'Courier New',monospace" font-size="34" fill="${MUT}">графіки й прогноз — на сайті</text>
      <rect x="70" y="890" width="640" height="80" rx="16" fill="${BG}" stroke="${AC}" stroke-width="2"/>
      <text x="110" y="943" font-family="'Courier New',monospace" font-size="32" fill="${AC}">Посилання в шапці профілю</text>`,
     ctx
   );
+}
+
+/**
+ * ⚠️ Рядок зміни на слайді динаміки: при нульовій зміні малювалось «▼ −0,00 грн»
+ * — падіння, якого не було (та сама неправда, що «подешевшав» у голосі).
+ */
+export function рядокЗміниКаруселі(diff, pct) {
+  if (Math.abs(diff) < 0.005) return '= без змін';
+  const up = diff > 0;
+  return `${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн (${up ? '+' : '−'}${Math.abs(pct).toFixed(1)}%)`;
 }
 
 export function caption(latest) {

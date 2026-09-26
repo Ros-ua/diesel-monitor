@@ -10,6 +10,7 @@
 // env: INSTAGRAM_TOKEN, TELEGRAM_BOT_TOKEN, TG_OWNER_CHAT (chat_id власника)
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { записКоментаря, записДиректу, безНіків } from './lib/міст.mjs';
 
 const IG = 'https://graph.instagram.com/v23.0';
 const igToken = process.env.INSTAGRAM_TOKEN;
@@ -50,7 +51,8 @@ async function tg(method, body) {
 
 async function loadState() {
   try {
-    return JSON.parse(await readFile(STATE_FILE, 'utf-8'));
+    // ⚠️ старий стан із ніками чиститься при першому ж прогоні (lib/міст.mjs)
+    return безНіків(JSON.parse(await readFile(STATE_FILE, 'utf-8')));
   } catch {
     return { seenComments: [], seenMessages: [], map: {}, tgOffset: 0 };
   }
@@ -92,7 +94,7 @@ async function pullComments(state) {
           `<a href="${m.permalink}">відкрити в Instagram</a>\n\n` +
           `↩️ Відповідай реплаєм на це повідомлення`,
       });
-      state.map[msg.message_id] = { kind: 'comment', id: c.id, who: c.username };
+      state.map[msg.message_id] = записКоментаря(c);
       sent++;
     }
   }
@@ -137,7 +139,7 @@ async function pullMessages(state) {
           `${esc(m.message)}\n\n` +
           `↩️ Відповідай реплаєм на це повідомлення`,
       });
-      state.map[msg.message_id] = { kind: 'dm', id: m.from?.id, who: m.from?.username };
+      state.map[msg.message_id] = записДиректу(m);
       sent++;
     }
   }
@@ -180,7 +182,7 @@ async function pushReplies(state) {
       await tg('sendMessage', {
         chat_id: owner,
         reply_to_message_id: m.message_id,
-        text: `✅ Відповідь надіслано @${target.who ?? ''} в Instagram`,
+        text: '✅ Відповідь надіслано в Instagram',
       });
       sent++;
     } catch (e) {
