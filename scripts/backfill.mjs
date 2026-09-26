@@ -9,11 +9,11 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchPage, parseDetail, parseAverages, nationalNetworks } from './lib/minfin.mjs';
+import { рядBrent, рядUSD, курсНБУ } from './lib/числа.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const log = (...a) => console.log(...a);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const round2 = v => Math.round(v * 100) / 100;
 
 const AVG_PAGES = ['index.minfin.com.ua/ua/markets/fuel/', 'index.minfin.com.ua/markets/fuel/'];
 const DETAIL_PAGES = [
@@ -99,12 +99,8 @@ async function main() {
       'https://query1.finance.yahoo.com/v8/finance/chart/BZ=F?range=3y&interval=1d',
       { headers: { 'User-Agent': 'Mozilla/5.0' } }
     ).then(r => r.json());
-    const res = j.chart.result[0];
-    const closes = res.indicators.quote[0].close;
-    res.timestamp.forEach((t, i) => {
-      if (closes[i] != null)
-        brentByDate.set(new Date(t * 1000).toISOString().slice(0, 10), round2(closes[i]));
-    });
+    // ⚠️ Лише придатні закриття — див. рядBrent у lib/числа.mjs
+    brentByDate = рядBrent(j);
     log(`Brent: ${brentByDate.size} днів`);
   } catch (e) {
     log(`Brent: помилка (${e.message})`);
@@ -116,10 +112,7 @@ async function main() {
     const j = await fetch(
       'https://bank.gov.ua/NBU_Exchange/exchange_site?start=20240101&end=20261231&valcode=usd&sort=exchangedate&order=asc&json'
     ).then(r => r.json());
-    for (const row of j) {
-      const [d, m, y] = row.exchangedate.split('.');
-      usdByDate.set(`${y}-${m}-${d}`, round2(row.rate ?? row.rate_per_unit));
-    }
+    usdByDate = рядUSD(j);
     log(`USD (період): ${usdByDate.size} днів`);
   } catch (e) {
     log(`USD період не спрацював (${e.message}), тягну по датах…`);
@@ -128,7 +121,8 @@ async function main() {
         const j = await fetch(
           `https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&date=${date.replaceAll('-', '')}&json`
         ).then(r => r.json());
-        if (j?.[0]?.rate) usdByDate.set(date, round2(j[0].rate));
+        const v = курсНБУ(j, 'USD');
+        if (v !== null) usdByDate.set(date, v);
       } catch {}
       await sleep(300);
     }

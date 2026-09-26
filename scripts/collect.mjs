@@ -17,7 +17,8 @@ import { collectNews } from './lib/news.mjs';
 // ⚠️ Числа живуть окремим модулем, щоб їх можна було СПРОСИТИ пробою:
 // імпортувати collect.mjs не можна — внизу в нього main(), і проба
 // запустила б справжній збір із походом у мережу.
-import { курс } from './lib/числа.mjs';
+import { курсНБУ, brentЗYahoo, євроЗгідне, безСтрибка } from './lib/числа.mjs';
+import { звіритиДжерела } from './lib/звірка.mjs';
 import { вибратиМережі } from './lib/мережі.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
@@ -103,20 +104,78 @@ async function main() {
     }
   };
 
-  const tmNetworks = tryParse(tmHtml, parseNetworks, 'ціни по мережах (/tm/)');
-  const regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
+  let tmNetworks = tryParse(tmHtml, parseNetworks, 'ціни по мережах (/tm/)');
+  let regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
   // стара матриця «область × мережа» — якщо Мінфін колись поверне /detail/
-  const detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
+  let detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
   // ⚠️ 12.09.2026: теж через tryParse, як і решта джерел. Раніше зміна
   // верстки сторінки середніх цін валила ВЕСЬ збір: жодного записаного
   // файлу, навіть журналу запуску, і сайт лишався з позавчорашньою ціною
   // при справних інших джерелах. Перевірено прогоном: 0 файлів, exit 1.
-  const averages = tryParse(avgHtml, parseAverages, 'середні ціни');
-  const usd = курс(nbu?.[0]?.rate ?? null, { від: 1, до: 1000 });
-  const eur = курс(nbuEur?.[0]?.rate ?? null, { від: 1, до: 1000 });
-  const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
-  const brent = курс(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null,
-                     { від: 1, до: 1000 });
+  let averages = tryParse(avgHtml, parseAverages, 'середні ціни');
+
+  // ⚠️ 26.09.2026 (аудит). Тривоги збору — те, що людина мусить побачити, не
+  // відкриваючи JSON. Раніше EUR=0 і Brent=−80 публікувались, а прогін
+  // лишався зеленим; після правки 12.09 сміття перестало публікуватись, але
+  // прогін так само лишався зеленим і МОВЧАВ. Тепер кожна тривога йде і в
+  // журнал запусків, і жовтою позначкою в підсумок GitHub Actions.
+  const тривоги = [];
+  const тривога = текст => {
+    тривоги.push(текст);
+    log(`ТРИВОГА: ${текст}`);
+    console.log(`::warning title=Збір цін::${текст}`);
+  };
+
+  const prev = await readJson('latest.json', null);
+  const prevFactors = await readJson('factors.json', { days: [] });
+  const останнє = поле => {
+    for (let i = prevFactors.days.length - 1; i >= 0; i--) {
+      const v = prevFactors.days[i]?.[поле];
+      if (Number.isFinite(v)) return v;
+    }
+    return Number.isFinite(prev?.[поле]) ? prev[поле] : null;
+  };
+
+  // ⚠️ Курс — ТІЄЇ валюти, яку просили, у правдоподібних межах і без
+  // стрибка на третину за добу. Подробиці — у lib/числа.mjs.
+  const перевірене = (що, v, попереднє) => {
+    if (newsOnly) return v;
+    if (v === null) { тривога(`${що}: немає придатного числа — не публікую`); return null; }
+    if (!безСтрибка(v, попереднє)) {
+      тривога(`${що}: ${v} проти попереднього ${попереднє} — стрибок понад 30%, не публікую`);
+      return null;
+    }
+    return v;
+  };
+  const usd = перевірене('USD', курсНБУ(nbu, 'USD'), останнє('usd'));
+  let eur = перевірене('EUR', курсНБУ(nbuEur, 'EUR'),
+                       Number.isFinite(prev?.eur) ? prev.eur : null);
+  if (eur !== null && !євроЗгідне(eur, usd)) {
+    тривога(`EUR: ${eur} не сходиться з USD ${usd} — не публікую`);
+    eur = null;
+  }
+  const brent = перевірене('Brent', brentЗYahoo(brentJson), останнє('brent'));
+
+  // Дата сторінки середніх — до звірки: навіть якщо самі ціни знімемо, дата
+  // лишається правдою, і день не повинен з'їхати на «сьогодні».
+  const датаСередніх = averages?.date ?? null;
+
+  // ⚠️ Звірка джерел між собою — див. lib/звірка.mjs. Джерело, що розійшлося
+  // з більшістю, знімається так, ніби сторінка не відповіла.
+  if (!newsOnly) {
+    const звірка = звіритиДжерела({
+      середні: averages?.avg ?? null,
+      мережі: tmNetworks,
+      області: regionAvg,
+      матриця: detail ? nationalNetworks(detail.regions) : null,
+      вчора: prev?.avg ?? null,
+    });
+    for (const причина of звірка.причини) тривога(`звірка — ${причина}`);
+    if (звірка.зняти.includes('середні')) averages = null;
+    if (звірка.зняти.includes('мережі')) tmNetworks = null;
+    if (звірка.зняти.includes('області')) regionAvg = null;
+    if (звірка.зняти.includes('матриця')) detail = null;
+  }
 
   if (!newsOnly && !averages && !detail && !tmNetworks)
     throw new Error('Жодне джерело цін недоступне — історію не оновлено');
@@ -127,13 +186,12 @@ async function main() {
 
   // Дата даних — зі сторінки мінфіну (вона оновлюється ~опівдні за Києвом;
   // вранці сторінка ще показує вчорашні ціни, і їх треба писати під вчорашньою датою)
-  const pageDate = averages?.date ? averages.date.split('.').reverse().join('-') : today;
+  const pageDate = датаСередніх ? датаСередніх.split('.').reverse().join('-') : today;
   if (pageDate !== today) log(`Увага: мінфін ще показує дані за ${pageDate}`);
 
   // ⚠️ Рішення про карту мереж приймаємо ОДИН раз і ДО запису файлів — інакше
   // в history.json потрапляв би обвалений набір, а в latest.json підставлена
   // вчорашня карта під сьогоднішньою датою. Подробиці — у lib/мережі.mjs.
-  const prev = await readJson('latest.json', null);
   const вибір = вибратиМережі({
     свіжі: networks,
     попередні: prev?.networks ?? null,
@@ -256,6 +314,7 @@ async function main() {
             // Без нього «одна мережа замість тридцяти шести» не лишала сліду.
             networks: вибір.свіжі },
       ...(вибір.обвал && { обвалМереж: { було: вибір.було, стало: вибір.стало } }),
+      ...(тривоги.length && { тривоги }),
     });
     runlog.runs = runlog.runs.slice(-100);
     await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));
