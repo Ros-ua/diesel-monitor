@@ -7,7 +7,7 @@ import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
 import { FUEL_LABELS, FUEL_ORDER, FUEL_SHORT } from '../types';
 import type { NetworkPrices } from '../types';
-import { arrow, changeColor, fmtDate, fmtDateShort, fmtPct, fmtPrice, fmtSigned } from '../lib/format';
+import { arrow, changeColor, fmtDate, fmtDateShort, fmtPct, fmtPrice, fmtSigned, isoFromMs } from '../lib/format';
 import { averageOver, changeOver, networkSeries } from '../lib/stats';
 import type { SeriesPoint } from '../lib/stats';
 import Chart from '../components/Chart';
@@ -134,7 +134,7 @@ function NetworkContent({ name, net }: { name: string; net: NetworkPrices }) {
         axisLabel: {
           ...AXIS_DEFAULTS.axisLabel,
           hideOverlap: true,
-          formatter: (value: number) => fmtDateShort(new Date(value).toISOString().slice(0, 10)),
+          formatter: (value: number) => fmtDateShort(isoFromMs(value)),
         },
       },
       yAxis: {

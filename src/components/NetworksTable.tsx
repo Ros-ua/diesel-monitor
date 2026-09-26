@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
-import { changeOver, networkSeries } from '../lib/stats';
-import { changeColor, fmtPrice, fmtSigned } from '../lib/format';
+import { changeBetween, changeOver, lastTwoNetworkDays, networkSeries } from '../lib/stats';
+import { changeColor, fmtPrice, fmtSigned, previousDayLabel } from '../lib/format';
 import { FUEL_SHORT, type NetworkPrices } from '../types';
 
 type SortKey = 'name' | 'price' | 'd1' | 'd7' | 'd30' | 'vs';
@@ -22,11 +22,11 @@ interface Row {
 }
 
 /** Колонки таблиці; заголовок цінової — під вибране пальне */
-function buildColumns(fuelShort: string): { key: SortKey; label: string; align: 'left' | 'right' }[] {
+function buildColumns(fuelShort: string, d1Label: string): { key: SortKey; label: string; align: 'left' | 'right' }[] {
   return [
     { key: 'name', label: 'Мережа', align: 'left' },
     { key: 'price', label: `Ціна ${fuelShort}`, align: 'right' },
-    { key: 'd1', label: 'Вчора', align: 'right' },
+    { key: 'd1', label: d1Label, align: 'right' },
     { key: 'd7', label: 'Тиждень', align: 'right' },
     { key: 'd30', label: 'Місяць', align: 'right' },
     { key: 'vs', label: 'vs середня', align: 'right' },
@@ -46,7 +46,11 @@ export default function NetworksTable() {
   const { latest, history } = useAppData();
   const { fuel } = useFuel();
   const fuelShort = FUEL_SHORT[fuel];
-  const columns = useMemo(() => buildColumns(fuelShort), [fuelShort]);
+  // «Вчора» — попередній день збору; якщо він не календарне вчора, підпис чесно
+  // каже, з якого дня рахуємо (див. lastTwoNetworkDays)
+  const пара = useMemo(() => lastTwoNetworkDays(history.days), [history]);
+  const d1Label = пара ? previousDayLabel(пара.from, пара.to) : 'Вчора';
+  const columns = useMemo(() => buildColumns(fuelShort, d1Label), [fuelShort, d1Label]);
 
   const [query, setQuery] = useState('');
   const [minStr, setMinStr] = useState('');
@@ -83,7 +87,7 @@ export default function NetworksTable() {
       rows.push({
         name,
         price,
-        d1: changeOver(series, 1)?.abs ?? null,
+        d1: пара ? changeBetween(series, пара.from, пара.to)?.abs ?? null : null,
         d7: changeOver(series, 7)?.abs ?? null,
         d30: changeOver(series, 30)?.abs ?? null,
         vs: avgPrice !== undefined ? price - avgPrice : null,
@@ -91,7 +95,7 @@ export default function NetworksTable() {
       });
     }
     return rows;
-  }, [latest, history, fuel]);
+  }, [latest, history, fuel, пара]);
 
   // Пошук + фільтр ціни + сортування
   const rows = useMemo(() => {

@@ -32,6 +32,25 @@ export const fmtDateShort = (iso: string): string => {
   return `${d} ${MONTHS[m - 1]}`;
 };
 
+/**
+ * Мітка часу осі ECharts → 'YYYY-MM-DD' за МІСЦЕВИМ часом браузера.
+ *
+ * ⚠️ ECharts ставить дату 'YYYY-MM-DD' на МІСЦЕВУ північ і мітки осі теж
+ * рахує в місцевому часі (замір 26.09.2026 на ECharts 6.1.0). Раніше підпис
+ * будувався через toISOString (UTC), і в Україні (UTC+2/+3) кожна мітка
+ * виходила на день раніше: 1 вересня підписувалось «31 сер» — живий сайт.
+ */
+export const isoFromMs = (ms: number): string => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Підпис колонки «Вчора»: так, якщо попередній день збору справді вчора, інакше «з 25 вер» */
+export const previousDayLabel = (from: string, to: string): string =>
+  Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z') === 86_400_000
+    ? 'Вчора'
+    : `з ${fmtDateShort(from)}`;
+
 export const fmtDateTime = (iso: string): string => {
   const dt = new Date(iso);
   return `${dt.toLocaleDateString('uk-UA')} ${dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`;

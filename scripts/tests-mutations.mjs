@@ -1139,11 +1139,60 @@ const ПІДСАДКИ = [
     стереже: `карусель: число мереж і областей — з даних`,
     сюїта: 'tests-parser.mjs',
   },
+  {
+    імя: `вісь знову рахує дату в UTC`,
+    файл: `../src/lib/format.ts`,
+    було: `  return \`\${d.getFullYear()}-\${String(d.getMonth() + 1).padStart(2, '0')}-\${String(d.getDate()).padStart(2, '0')}\`;`,
+    стало: `  return d.toISOString().slice(0, 10);`,
+    стереже: `мітка 1 вересня — «1 вер», а не 31 серпня`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `сторінка мережі знову підписує вісь через toISOString`,
+    файл: `../src/pages/NetworkPage.tsx`,
+    було: `formatter: (value: number) => fmtDateShort(isoFromMs(value)),`,
+    стало: `formatter: (value: number) => fmtDateShort(new Date(value).toISOString().slice(0, 10)),`,
+    стереже: `NetworkPage.tsx: вісь без toISOString`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `таблиця знову рахує «Вчора» як календарне вчора`,
+    файл: `../src/components/NetworksTable.tsx`,
+    було: `        d1: пара ? changeBetween(series, пара.from, пара.to)?.abs ?? null : null,`,
+    стало: `        d1: changeOver(series, 1)?.abs ?? null,`,
+    стереже: `таблиця: «Вчора» не через changeOver(…, 1)`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `день без мереж вважати днем збору`,
+    файл: `../src/lib/stats.ts`,
+    було: `  const з = days.filter(d => d.networks && Object.keys(d.networks).length);`,
+    стало: `  const з = days;`,
+    стереже: `день без мереж не рахується днем збору`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `підпис «Вчора» і в понеділок`,
+    файл: `../src/lib/format.ts`,
+    було: `  Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z') === 86_400_000`,
+    стало: `  Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z') <= 3 * 86_400_000`,
+    стереже: `понеділок: підпис колонки «з 25 вер»`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `«добове» знову через будь-який пропуск`,
+    файл: `../src/lib/stats.ts`,
+    було: `    if (toTime(s[i].date) - toTime(s[i - 1].date) !== dayMs) continue;
+`,
+    стало: ``,
+    стереже: `ріст за 12 днів не «добовий»`,
+    сюїта: 'tests-front.mjs',
+  },
 ];
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
   try {
-    const out = execFileSync(process.execPath, [path.join(корінь, сюїта)],
+    const out = execFileSync(process.execPath, [path.join(корінь, 'scripts', сюїта)],
       { encoding: 'utf8', stdio: 'pipe', timeout: 300000 });
     return { впало: false, текст: out };
   } catch (e) {
@@ -1154,7 +1203,10 @@ function прогін(корінь, сюїта = 'tests-parser.mjs') {
 function накопії(робота) {
   const корінь = mkdtempSync(path.join(tmpdir(), 'diesel-mut-'));
   try {
-    cpSync(SCRIPTS, корінь, { recursive: true });
+    // Копія в розкладці репозиторію: scripts/ і src/ поруч — проби фронтенду
+    // (tests-front.mjs) читають ../src. Шляхи підсадок — від scripts/.
+    cpSync(SCRIPTS, path.join(корінь, 'scripts'), { recursive: true });
+    cpSync(path.join(SCRIPTS, '..', 'src'), path.join(корінь, 'src'), { recursive: true });
     return робота(корінь);
   } finally {
     rmSync(корінь, { recursive: true, force: true });
@@ -1169,7 +1221,7 @@ function накопії(робота) {
 // вони самі по собі справні. 20.09.2026 так і вийшло: tests-parser.mjs був
 // червоний ще до правки, і разом із ним мовчки випали всі інші.
 const хворі = new Set();
-for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs']) {
+for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs']) {
   const базовий = накопії(к => прогін(к, сюїта));
   if (базовий.впало) {
     хворі.add(сюїта);
@@ -1190,7 +1242,7 @@ for (const п of ПІДСАДКИ) {
     continue;
   }
   const р = накопії(корінь => {
-    const ціль = path.join(корінь, п.файл);
+    const ціль = path.join(корінь, 'scripts', п.файл);
     // ⚠️ Переводи рядків нормалізуємо. Git віддає файли з CRLF (core.autocrlf),
     // а якорі підсадок написані з LF — і БАГАТОРЯДКОВІ якорі перестають
     // збігатися. Спіймано 12.09 одразу після rebase: було 17 з 17, стало 14,
