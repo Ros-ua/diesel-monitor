@@ -13,7 +13,7 @@ import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
-import { pickHashtags, standoutRegion } from './lib/hashtags.mjs';
+import { pickHashtags, standout } from './lib/hashtags.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -192,7 +192,7 @@ function slideTrend(latest, history, ctx) {
   );
 }
 
-function caption(latest) {
+export function caption(latest) {
   const f = v => fmt(v);
   const rows = FUELS.filter(([, k]) => latest.avg?.[k] !== undefined)
     .map(([name, k]) => {
@@ -208,10 +208,13 @@ function caption(latest) {
     .sort((a, b) => a[1].dp - b[1].dp)[0];
 
   // область-сюжет дає вузький хештег: у ньому менша конкуренція, ніж у #пальне
-  const region = standoutRegion(latest.regionAvg, 'dp');
+  // ⚠️ Підпис — за тим, що область ЄСТЬ: найдешевша чи найдорожча (рішення Роса 26.09).
+  const виділена = standout(latest.regionAvg, 'dp');
+  const region = виділена?.name ?? null;
+  const якаОбласть = виділена?.дешевша ? 'Найдешевший' : 'Найдорожчий';
   const regionLine =
     region && latest.regionAvg?.[region]?.dp !== undefined
-      ? `Найдешевший дизель по областях: ${region} — ${f(latest.regionAvg[region].dp)} грн/л\n\n`
+      ? `${якаОбласть} дизель по областях: ${region} — ${f(latest.regionAvg[region].dp)} грн/л\n\n`
       : '';
 
   return (
