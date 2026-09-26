@@ -19,7 +19,16 @@ const медіана = ряд => {
   return v.length % 2 ? v[с] : (v[с - 1] + v[с]) / 2;
 };
 
+// ⚠️ Лише сім відомих днів і лише день із повною картою: одноразовий ремонт не
+// мусить торкатись будь-чого іншого (Astra: чесний 10.09 з однією дорогою
+// мережею теж «виглядав» зсунутим).
+export const ДНІ_ЗСУВУ = new Set(['2026-09-11', '2026-09-14', '2026-09-15', '2026-09-16',
+  '2026-09-17', '2026-09-18', '2026-09-21']);
+const МІНІМУМ_МЕРЕЖ = 10;
+
 export function зсунутийДень(day) {
+  if (!ДНІ_ЗСУВУ.has(day?.date)) return false;
+  if (Object.keys(day?.networks ?? {}).length < МІНІМУМ_МЕРЕЖ) return false;
   const мережі = Object.values(day?.networks ?? {});
   const avg = day?.avg ?? {};
   if (!мережі.length || !avg.gas || !avg.a95p) return false;
@@ -33,6 +42,9 @@ export function повернутиЗсув(day) {
   if (!зсунутийДень(day)) return day;
   const networks = {};
   for (const [назва, n] of Object.entries(day.networks)) {
+    // ⚠️ Зсуваємо лише РЯДОК із власною ознакою: a95p немає, а «газ» — ціна
+    // дизеля. Чесний рядок у зсунутому дні лишається як був (знахідка Astra).
+    if (n?.a95p !== undefined || !(n?.gas > day.avg.gas * 1.5)) { networks[назва] = n; continue; }
     const правильні = {};
     if (n.a95 !== undefined) правильні.a95p = n.a95;
     if (n.a92 !== undefined) правильні.a95 = n.a92;

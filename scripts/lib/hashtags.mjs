@@ -103,7 +103,7 @@ const SKIP_REGIONS = new Set(['Донецька', 'Луганська', 'Хер�
  */
 export function standout(regionAvg, fuel = 'dp') {
   const list = Object.entries(regionAvg ?? {})
-    .filter(([name, p]) => p?.[fuel] !== undefined && !SKIP_REGIONS.has(name))
+    .filter(([name, p]) => Number.isFinite(p?.[fuel]) && !SKIP_REGIONS.has(name))
     .sort((a, b) => a[1][fuel] - b[1][fuel]);
   if (list.length < 5) return null;
 
@@ -117,6 +117,23 @@ export function standout(regionAvg, fuel = 'dp') {
   return dearGap > cheapGap
     ? { name: dearName, дешевша: false }
     : { name: cheapName, дешевша: true };
+}
+
+/**
+ * Область для ПІДПИСУ: лише якщо вона справді найдешевша чи найдорожча серед УСІХ
+ * областей з ціною — включно з прифронтовими, яких ми не тегаємо. Інакше null і
+ * рядка про область у підписі немає.
+ *
+ * ⚠️ Знахідка Astra 26.09: області 40…50 і Донецька 100 — standout давав Сумську
+ * (50) як «найдорожчу», бо прифронтові виключені з вибору.
+ */
+export function крайняОбласть(regionAvg, fuel = 'dp') {
+  const в = standout(regionAvg, fuel);
+  if (!в) return null;
+  const усі = Object.values(regionAvg ?? {}).map(p => p?.[fuel]).filter(v => Number.isFinite(v));
+  const ціна = regionAvg[в.name][fuel];
+  const крайня = в.дешевша ? ціна <= Math.min(...усі) : ціна >= Math.max(...усі);
+  return крайня ? в : null;
 }
 
 /** Лише назва — для хештега, де «дешевша чи дорожча» не важить. */

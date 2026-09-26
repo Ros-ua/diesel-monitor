@@ -10,7 +10,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
-import { pickHashtags, standout } from './lib/hashtags.mjs';
+import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -369,8 +369,8 @@ export function підписНайдешевшого(latest, fuel) {
     .map(([name, v]) => ({ name, price: v[fuel] }))
     .sort((a, b) => a.price - b.price)
     .slice(0, 3);
-  const виділена = standout(latest?.regionAvg, fuel);
-  const region = виділена?.name ?? null;
+  const виділена = крайняОбласть(latest?.regionAvg, fuel);
+  const region = standout(latest?.regionAvg, fuel)?.name ?? null;   // для хештега
   const якаОбласть = виділена?.дешевша ? 'Дешевше за все' : 'Дорожче за все';
   return (
     `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
@@ -378,8 +378,8 @@ export function підписНайдешевшого(latest, fuel) {
     (latest?.avg?.[fuel] !== undefined
       ? `\n\nСередня по Україні: ${f(latest.avg[fuel])} грн/л`
       : '') +
-    (region && latest?.regionAvg?.[region]?.[fuel] !== undefined
-      ? `\n${якаОбласть} — ${region} область: ${f(latest.regionAvg[region][fuel])} грн/л`
+    (виділена
+      ? `\n${якаОбласть} — ${виділена.name} область: ${f(latest.regionAvg[виділена.name][fuel])} грн/л`
       : '') +
     `\n\nЦіни по всіх мережах і областях — ${SITE_LINE}\n\n` +
     pickHashtags({ fuel, region })

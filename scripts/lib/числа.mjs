@@ -109,6 +109,8 @@ export function рядBrent(json) {
   const out = new Map();
   if (!р) return out;
   if (р.meta?.symbol !== undefined && р.meta.symbol !== 'BZ=F') return out;
+  // ⚠️ Як і щоденний шлях: не долари — не Brent (Astra: EUR 80 лягало як USD).
+  if (р.meta?.currency !== undefined && р.meta.currency !== 'USD') return out;
   const закриття = р.indicators?.quote?.[0]?.close ?? [];
   (р.timestamp ?? []).forEach((t, i) => {
     const v = курс(закриття[i], МЕЖІ.brent);
