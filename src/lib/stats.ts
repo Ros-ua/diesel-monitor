@@ -61,7 +61,49 @@ export function changeOver(
   return { abs, pct: (abs / base.value) * 100, fromDate: base.date };
 }
 
-/** Найбільші рухи між сусідніми точками серії у вікні N днів */
+/**
+ * Два останні дні збору, коли були ціни мереж: { from: попередній, to: останній }.
+ *
+ * ⚠️ «Вчора» в таблиці мереж — це ПОПЕРЕДНІЙ ДЕНЬ ЗБОРУ, а не календарне
+ * вчора: Мінфін не публікує у вихідні. Раніше колонку рахував changeOver(…, 1)
+ * з допуском 1,5 дня, і щопонеділка (п'ятниця — за 3 дні) вся колонка була «—».
+ */
+export function lastTwoNetworkDays(days: HistoryDay[], upTo?: string): { from: string; to: string } | null {
+  // upTo — дата карти мереж, чию ціну показує таблиця (latest.networksDate). Без межі
+  // історія, новіша за latest, давала ціну з одного знімка, а «Вчора» — з іншого
+  // (третя вичитка Astra 27.09: 100 і «Вчора +10» до ціни 110, якої на сайті немає).
+  const з = days.filter(d => d.networks && Object.keys(d.networks).length && (!upTo || d.date <= upTo));
+  return з.length < 2 ? null : { from: з[з.length - 2].date, to: з[з.length - 1].date };
+}
+
+/** Зміна між двома КОНКРЕТНИМИ днями серії; нема будь-якої з точок — null */
+/**
+ * «Вчора» від ПОКАЗАНОЇ ціни: показана ціна мінус ціна мережі в попередній день збору.
+ *
+ * ⚠️ Історію за день може перезаписати повторний збір (A: 110), а latest за той
+ * самий день лишитися з A: 100 — тоді різниця двох точок історії давала
+ * «100 і Вчора +15» (короткий захід Astra 27.09). Від показаної ціни — «+5».
+ */
+export function changeFromShown(series: SeriesPoint[], from: string, shown: number): number | null {
+  const base = series.find(p => p.date === from);
+  return base ? shown - base.value : null;
+}
+
+export function changeBetween(series: SeriesPoint[], from: string, to: string): { abs: number; pct: number } | null {
+  const a = series.find(p => p.date === from);
+  const b = series.find(p => p.date === to);
+  if (!a || !b) return null;
+  const abs = b.value - a.value;
+  return { abs, pct: (abs / a.value) * 100 };
+}
+
+/**
+ * Найбільші ДОБОВІ рухи у вікні N днів: лише між точками за сусідні календарні дні.
+ *
+ * ⚠️ Раніше бралися будь-які сусідні точки серії, а історія розріджена:
+ * «Макс. добове зростання +9,53 грн 18 бер» насправді було зростанням за 12 днів
+ * (06.03 → 18.03). Рух через вихідні чи пропуск добовим не є.
+ */
 export function extremeMoves(
   series: SeriesPoint[],
   windowDays: number | null = null
@@ -70,6 +112,7 @@ export function extremeMoves(
   let rise: { date: string; abs: number } | null = null;
   let drop: { date: string; abs: number } | null = null;
   for (let i = 1; i < s.length; i++) {
+    if (toTime(s[i].date) - toTime(s[i - 1].date) !== dayMs) continue;
     const abs = s[i].value - s[i - 1].value;
     if (abs > 0 && (!rise || abs > rise.abs)) rise = { date: s[i].date, abs };
     if (abs < 0 && (!drop || abs < drop.abs)) drop = { date: s[i].date, abs };

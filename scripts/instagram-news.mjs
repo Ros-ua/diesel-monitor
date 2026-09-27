@@ -10,7 +10,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
-import { pickHashtags, standoutRegion } from './lib/hashtags.mjs';
+import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -339,6 +339,53 @@ async function buildCard() {
 }
 
 // ── публікація ──
+/**
+ * Підпис картки «де найдешевше». Винесено з publish(), щоб проба могла його
+ * покликати.
+ *
+ * ⚠️ Рядок про область пишеться за тим, яка вона ЄСТЬ: «Дешевше за все» лише для
+ * найдешевшої, «Дорожче за все» — для найдорожчої. Раніше тут завжди стояло
+ * «Дешевше за все», а 26.09.2026 для газу виходила Сумська — 21-е місце з 23.
+ * Слово Роса: «Подписывать честно (Recommended)».
+ */
+/**
+ * Підпис денної зміни ціни в пості-новині.
+ *
+ * ⚠️ avgChange — різниця з ПОПЕРЕДНІМ днем (замір 26.09: a95p −0,56 = 25.09 мінус
+ * 24.09; за тиждень було б +0,36), а підпис казав «за тиждень». Слово Роса 26.09:
+ * «Почини все три (Recommended)».
+ */
+export function підписЗміни(ch, f) {
+  if (ch === undefined || Math.abs(ch) < 0.005) return '';
+  return ch > 0 ? ` (за добу +${f(ch)})` : ` (за добу −${f(Math.abs(ch))})`;
+}
+
+export function підписНайдешевшого(latest, fuel) {
+  const f = v => v.toFixed(2).replace('.', ',');
+  const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
+  const label = FUEL_LABELS[fuel] ?? 'Пальне';
+  const top = Object.entries(latest?.networks ?? {})
+    .filter(([, v]) => v?.[fuel] !== undefined && (v.regionCount ?? 0) >= 3)
+    .map(([name, v]) => ({ name, price: v[fuel] }))
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 3);
+  const виділена = крайняОбласть(latest?.regionAvg, fuel);
+  const region = standout(latest?.regionAvg, fuel)?.name ?? null;   // для хештега
+  const якаОбласть = виділена?.дешевша ? 'Дешевше за все' : 'Дорожче за все';
+  return (
+    `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
+    top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
+    (latest?.avg?.[fuel] !== undefined
+      ? `\n\nСередня по Україні: ${f(latest.avg[fuel])} грн/л`
+      : '') +
+    (виділена
+      ? `\n${якаОбласть} — ${виділена.name} область: ${f(latest.regionAvg[виділена.name][fuel])} грн/л`
+      : '') +
+    `\n\nЦіни по всіх мережах і областях — ${SITE_LINE}\n\n` +
+    pickHashtags({ fuel, region })
+  );
+}
+
 async function publish() {
   if (!token) return console.log('ig-news: INSTAGRAM_TOKEN не заданий — пропускаю');
 
@@ -361,24 +408,7 @@ async function publish() {
 
   if (pick.kind === 'cheapest') {
     // картка «де найдешевше» — коли безпечних новин не знайшлося
-    const label = FUEL_LABELS[pick.fuel] ?? 'Пальне';
-    const top = Object.entries(latest?.networks ?? {})
-      .filter(([, v]) => v?.[pick.fuel] !== undefined && (v.regionCount ?? 0) >= 3)
-      .map(([name, v]) => ({ name, price: v[pick.fuel] }))
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 3);
-    const region = standoutRegion(latest?.regionAvg, pick.fuel);
-    caption =
-      `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
-      top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
-      (latest?.avg?.[pick.fuel] !== undefined
-        ? `\n\nСередня по Україні: ${f(latest.avg[pick.fuel])} грн/л`
-        : '') +
-      (region && latest?.regionAvg?.[region]?.[pick.fuel] !== undefined
-        ? `\nДешевше за все — ${region} область: ${f(latest.regionAvg[region][pick.fuel])} грн/л`
-        : '') +
-      `\n\nЦіни по всіх мережах і областях — ${SITE_LINE}\n\n` +
-      pickHashtags({ fuel: pick.fuel, region });
+    caption = підписНайдешевшого(latest, pick.fuel);
   } else {
     const up = pick.impact !== 'down';
 
@@ -387,8 +417,7 @@ async function publish() {
     const fuel = pick.fuel && latest?.avg?.[pick.fuel] !== undefined ? pick.fuel : 'dp';
     if (latest?.avg?.[fuel] !== undefined) {
       const ch = latest.avgChange?.[fuel];
-      const chTxt = ch === undefined || Math.abs(ch) < 0.005 ? ''
-        : ch > 0 ? ` (за тиждень +${f(ch)})` : ` (за тиждень −${f(Math.abs(ch))})`;
+      const chTxt = підписЗміни(ch, f);
       const others = Object.entries(FUEL_LABELS)
         .filter(([k]) => k !== fuel && latest.avg[k] !== undefined)
         .slice(0, 3)

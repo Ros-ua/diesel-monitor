@@ -54,6 +54,8 @@ export interface Latest {
   avg?: FuelPrices;
   avgChange?: FuelPrices; // зміна за день, грн
   networks?: Record<string, NetworkPrices>;
+  /** Коли справді зібрано карту мереж (може бути старшою за date — збирач лишив попередню) */
+  networksDate?: string;
   /** Середні ціни по областях (Мінфін /reg/) — основне джерело з 29.07.2026 */
   regionAvg?: Record<string, FuelPrices>;
   /** Стара матриця «область × мережа». Мінфін прибрав її 29.07.2026 —

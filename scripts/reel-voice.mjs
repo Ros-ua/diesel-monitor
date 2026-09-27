@@ -11,6 +11,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { текстГолосу } from './lib/голос.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FRAMES_DIR = path.join(ROOT, 'frames');
@@ -20,32 +21,7 @@ const VOICE = 'Charon'; // спокійний низький диктор; ал�
 
 const key = process.env.GEMINI_API_KEY;
 
-const plural = (n, one, few, many) => {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-};
 
-// Текст ~25 слів: у 12-секундний ролик вміщується з паузами. Числа округлюємо —
-// «дев'яносто два» звучить, «дев'яносто два кома вісімдесят один» — ні.
-function buildText(meta) {
-  const name = { dp: 'Дизель', a95: 'Бензин А-95', a95p: 'Бензин А-95 плюс', a92: 'Бензин А-92', gas: 'Автогаз' }[meta.fuel] ?? 'Пальне';
-  const up = meta.diff > 0;
-  const pct = Math.max(1, Math.round(Math.abs(meta.pct)));
-  const price = Math.round(meta.last);
-  const period =
-    meta.months >= 12 ? 'за рік'
-    : meta.months <= 1 ? 'за місяць'
-    : `за ${meta.months} ${plural(meta.months, 'місяць', 'місяці', 'місяців')}`;
-
-  return (
-    `${name} в Україні ${period} ${up ? 'подорожчав' : 'подешевшав'} ` +
-    `на ${pct} ${plural(pct, 'відсоток', 'відсотки', 'відсотків')} — ` +
-    `уже ${price} ${plural(price, 'гривня', 'гривні', 'гривень')} за літр. ` +
-    `Куди рухається ціна — дивись на Дизель Моніторі.`
-  );
-}
 
 // API віддає сирий PCM 16-біт моно — загортаємо в WAV-заголовок для ffmpeg
 function wav(pcm, rate) {
@@ -64,7 +40,7 @@ async function main() {
     process.exit(3);
   }
   const meta = JSON.parse(await readFile(path.join(FRAMES_DIR, 'meta.json'), 'utf-8'));
-  const text = buildText(meta);
+  const text = текстГолосу(meta);
   console.error(`озвучка: «${text}»`);
 
   const res = await fetch(

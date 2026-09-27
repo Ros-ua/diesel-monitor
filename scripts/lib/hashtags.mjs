@@ -94,10 +94,16 @@ export function pickHashtags({ fuel, region, change, news } = {}) {
 // з карти EV-зарядок.
 const SKIP_REGIONS = new Set(['Донецька', 'Луганська', 'Херсонська', 'Запорізька']);
 
-/** Область, яка «робить сюжет»: найдешевша або найдорожча — про неї й тег. */
-export function standoutRegion(regionAvg, fuel = 'dp') {
+/**
+ * Область, яка «робить сюжет»: найдешевша або найдорожча — і ЯКА саме.
+ *
+ * ⚠️ Раніше функція повертала лише назву, а підписи в Instagram завжди писали
+ * «найдешевший». Замір 26.09.2026: для газу поверталась Сумська — 21-е місце з 23 —
+ * під підписом «дешевше за все». Слово Роса: «Подписывать честно (Recommended)».
+ */
+export function standout(regionAvg, fuel = 'dp') {
   const list = Object.entries(regionAvg ?? {})
-    .filter(([name, p]) => p?.[fuel] !== undefined && !SKIP_REGIONS.has(name))
+    .filter(([name, p]) => Number.isFinite(p?.[fuel]) && !SKIP_REGIONS.has(name))
     .sort((a, b) => a[1][fuel] - b[1][fuel]);
   if (list.length < 5) return null;
 
@@ -108,5 +114,29 @@ export function standoutRegion(regionAvg, fuel = 'dp') {
   // беремо ту, що сильніше відірвалась від середини — там і сюжет
   const cheapGap = mid - cheapP[fuel];
   const dearGap = dearP[fuel] - mid;
-  return dearGap > cheapGap ? dearName : cheapName;
+  return dearGap > cheapGap
+    ? { name: dearName, дешевша: false }
+    : { name: cheapName, дешевша: true };
+}
+
+/**
+ * Область для ПІДПИСУ: лише якщо вона справді найдешевша чи найдорожча серед УСІХ
+ * областей з ціною — включно з прифронтовими, яких ми не тегаємо. Інакше null і
+ * рядка про область у підписі немає.
+ *
+ * ⚠️ Знахідка Astra 26.09: області 40…50 і Донецька 100 — standout давав Сумську
+ * (50) як «найдорожчу», бо прифронтові виключені з вибору.
+ */
+export function крайняОбласть(regionAvg, fuel = 'dp') {
+  const в = standout(regionAvg, fuel);
+  if (!в) return null;
+  const усі = Object.values(regionAvg ?? {}).map(p => p?.[fuel]).filter(v => Number.isFinite(v));
+  const ціна = regionAvg[в.name][fuel];
+  const крайня = в.дешевша ? ціна <= Math.min(...усі) : ціна >= Math.max(...усі);
+  return крайня ? в : null;
+}
+
+/** Лише назва — для хештега, де «дешевша чи дорожча» не важить. */
+export function standoutRegion(regionAvg, fuel = 'dp') {
+  return standout(regionAvg, fuel)?.name ?? null;
 }

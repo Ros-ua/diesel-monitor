@@ -6,7 +6,7 @@ import Chart from './Chart';
 import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
 import { avgSeries, clipRange, toTime, type SeriesPoint } from '../lib/stats';
-import { fmtDate, fmtDateShort, fmtPrice } from '../lib/format';
+import { fmtDate, fmtDateShort, fmtPrice, isoFromMs } from '../lib/format';
 import { AXIS_DEFAULTS, CHART_COLORS, TOOLTIP_DEFAULTS } from '../lib/echarts';
 import { FUEL_SHORT } from '../types';
 
@@ -20,8 +20,6 @@ const RANGES: { label: string; days: number | null }[] = [
 ];
 
 const WEEK_MS = 7 * 86_400_000;
-
-const isoFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 interface AxisTooltipParam {
   value?: [string | number, number];

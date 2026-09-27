@@ -12,12 +12,14 @@ import {
   parseNetworks,
   parseRegionAverages,
   nationalNetworks,
+  знайтиДату,
 } from './lib/minfin.mjs';
 import { collectNews } from './lib/news.mjs';
 // ⚠️ Числа живуть окремим модулем, щоб їх можна було СПРОСИТИ пробою:
 // імпортувати collect.mjs не можна — внизу в нього main(), і проба
 // запустила б справжній збір із походом у мережу.
-import { курс } from './lib/числа.mjs';
+import { курсНБУ, brentЗYahoo, євроЗгідне, безСтрибка, курс, МЕЖІ } from './lib/числа.mjs';
+import { звіритиДжерела, викидиМереж } from './lib/звірка.mjs';
 import { вибратиМережі } from './lib/мережі.mjs';
 
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
@@ -103,20 +105,113 @@ async function main() {
     }
   };
 
-  const tmNetworks = tryParse(tmHtml, parseNetworks, 'ціни по мережах (/tm/)');
-  const regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
+  let tmNetworks = tryParse(tmHtml, parseNetworks, 'ціни по мережах (/tm/)');
+  let regionAvg = tryParse(regHtml, parseRegionAverages, 'ціни по областях (/reg/)');
   // стара матриця «область × мережа» — якщо Мінфін колись поверне /detail/
-  const detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
+  let detail = tryParse(detailHtml, parseDetail, 'матриця область × мережа (/detail/)');
   // ⚠️ 12.09.2026: теж через tryParse, як і решта джерел. Раніше зміна
   // верстки сторінки середніх цін валила ВЕСЬ збір: жодного записаного
   // файлу, навіть журналу запуску, і сайт лишався з позавчорашньою ціною
   // при справних інших джерелах. Перевірено прогоном: 0 файлів, exit 1.
-  const averages = tryParse(avgHtml, parseAverages, 'середні ціни');
-  const usd = курс(nbu?.[0]?.rate ?? null, { від: 1, до: 1000 });
-  const eur = курс(nbuEur?.[0]?.rate ?? null, { від: 1, до: 1000 });
-  const brentCloses = brentJson?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(v => v != null);
-  const brent = курс(brentCloses?.length ? brentCloses[brentCloses.length - 1] : null,
-                     { від: 1, до: 1000 });
+  let averages = tryParse(avgHtml, parseAverages, 'середні ціни');
+
+  // ⚠️ 26.09.2026 (аудит). Тривоги збору — те, що людина мусить побачити, не
+  // відкриваючи JSON. Раніше EUR=0 і Brent=−80 публікувались, а прогін
+  // лишався зеленим; після правки 12.09 сміття перестало публікуватись, але
+  // прогін так само лишався зеленим і МОВЧАВ. Тепер кожна тривога йде і в
+  // журнал запусків, і жовтою позначкою в підсумок GitHub Actions.
+  const тривоги = [];
+  const тривога = текст => {
+    тривоги.push(текст);
+    log(`ТРИВОГА: ${текст}`);
+    console.log(`::warning title=Збір цін::${текст}`);
+  };
+
+  const prev = await readJson('latest.json', null);
+  const prevFactors = await readJson('factors.json', { days: [] });
+  const останнє = поле => {
+    for (let i = prevFactors.days.length - 1; i >= 0; i--) {
+      const v = prevFactors.days[i]?.[поле];
+      // ⚠️ Опорне значення для «стрибка» мусить САМЕ проходити межі. Раніше старий
+      // поганий USD 4,48 (старий код його пропускав) назавжди блокував правильний
+      // 44,80 як «стрибок на 900%». Знахідка Astra 26.09.
+      if (курс(v, МЕЖІ[поле]) !== null) return v;
+    }
+    return курс(prev?.[поле], МЕЖІ[поле]) !== null ? prev[поле] : null;
+  };
+
+  // ⚠️ Курс — ТІЄЇ валюти, яку просили, у правдоподібних межах і без
+  // стрибка на третину за добу. Подробиці — у lib/числа.mjs.
+  const перевірене = (що, v, попереднє) => {
+    if (newsOnly) return v;
+    if (v === null) { тривога(`${що}: немає придатного числа — не публікую`); return null; }
+    if (!безСтрибка(v, попереднє)) {
+      тривога(`${що}: ${v} проти попереднього ${попереднє} — стрибок понад 30%, не публікую`);
+      return null;
+    }
+    return v;
+  };
+  const usd = перевірене('USD', курсНБУ(nbu, 'USD'), останнє('usd'));
+  let eur = перевірене('EUR', курсНБУ(nbuEur, 'EUR'),
+                       курс(prev?.eur, МЕЖІ.eur) !== null ? prev.eur : null);
+  if (eur !== null && !євроЗгідне(eur, usd)) {
+    тривога(`EUR: ${eur} не сходиться з USD ${usd} — не публікую`);
+    eur = null;
+  }
+  const brent = перевірене('Brent', brentЗYahoo(brentJson), останнє('brent'));
+
+  // ⚠️ ДАТА ДАНИХ — із самих сторінок Мінфіну. У кожної своя «оновлення: …»
+  // (перевірено живцем 26.09: /tm/ і /reg/ теж її мають). Дата даних — НАЙСВІЖІША
+  // з відомих; сторінка, чия дата старша або невідома, знімається з тривогою.
+  // Так вчорашня таблиця більше не переголосовує свіжу середню (знахідка Astra
+  // №2), і відмова однієї сторінки середніх не пускає решту під «сьогодні»
+  // (№4). Слово Роса 26.09: «Не выдавать за сегодняшние (Recommended)».
+  const iso = д => (д ? д.split('.').reverse().join('-') : null);
+  const датиСторінок = {
+    середні: averages ? iso(averages.date) : null,
+    '/tm/': tmNetworks ? iso(знайтиДату(tmHtml ?? '')) : null,
+    '/reg/': regionAvg ? iso(знайтиДату(regHtml ?? '')) : null,
+    '/detail/': detail ? iso(знайтиДату(detailHtml ?? '')) : null,
+  };
+  const живіСторінки = { середні: !!averages, '/tm/': !!tmNetworks, '/reg/': !!regionAvg, '/detail/': !!detail };
+  const відомі = Object.values(датиСторінок).filter(Boolean).sort();
+  const датаДаних = відомі.at(-1) ?? null;
+  const зняти = назва => {
+    if (назва === 'середні') averages = null;
+    if (назва === '/tm/') tmNetworks = null;
+    if (назва === '/reg/') regionAvg = null;
+    if (назва === '/detail/') detail = null;
+  };
+  if (!newsOnly) {
+    for (const [назва, жива] of Object.entries(живіСторінки)) {
+      if (!жива) continue;
+      const д = датиСторінок[назва];
+      if (!д) {
+        тривога(`${назва}: дату сторінки не знайдено або вона старша тижня — не публікую як сьогоднішнє`);
+        зняти(назва);
+      } else if (д < датаДаних) {
+        тривога(`${назва}: сторінка за ${д}, а дані за ${датаДаних} — не публікую`);
+        зняти(назва);
+      }
+    }
+  }
+
+  // ⚠️ Звірка джерел між собою — див. lib/звірка.mjs. Джерело, що розійшлося
+  // з більшістю, знімається так, ніби сторінка не відповіла.
+  if (!newsOnly) {
+    const звірка = звіритиДжерела({
+      середні: averages?.avg ?? null,
+      мережі: tmNetworks,
+      області: regionAvg,
+      матриця: detail ? nationalNetworks(detail.regions) : null,
+      вчора: prev?.avg ?? null,
+    });
+    for (const причина of звірка.причини) тривога(`звірка — ${причина}`);
+    if (звірка.зняти.includes('середні')) averages = null;
+    if (звірка.зняти.includes('мережі')) tmNetworks = null;
+    if (звірка.зняти.includes('області')) regionAvg = null;
+    if (звірка.зняти.includes('матриця')) detail = null;
+  }
 
   if (!newsOnly && !averages && !detail && !tmNetworks)
     throw new Error('Жодне джерело цін недоступне — історію не оновлено');
@@ -127,19 +222,29 @@ async function main() {
 
   // Дата даних — зі сторінки мінфіну (вона оновлюється ~опівдні за Києвом;
   // вранці сторінка ще показує вчорашні ціни, і їх треба писати під вчорашньою датою)
-  const pageDate = averages?.date ? averages.date.split('.').reverse().join('-') : today;
+  const pageDate = датаДаних ?? today;
   if (pageDate !== today) log(`Увага: мінфін ще показує дані за ${pageDate}`);
 
   // ⚠️ Рішення про карту мереж приймаємо ОДИН раз і ДО запису файлів — інакше
   // в history.json потрапляв би обвалений набір, а в latest.json підставлена
   // вчорашня карта під сьогоднішньою датою. Подробиці — у lib/мережі.mjs.
-  const prev = await readJson('latest.json', null);
   const вибір = вибратиМережі({
     свіжі: networks,
     попередні: prev?.networks ?? null,
     дата: pageDate,
     попередняДата: prev?.networksDate ?? prev?.date ?? null,
   });
+  // ⚠️ Викид окремої мережі знімаємо з ОБРАНОЇ карти — свіжої (з /tm/ чи з
+  // запасної матриці /detail/) або попередньої, яку лишили через обвал. Фільтр
+  // до вибору пропускав попередню карту (третя вичитка Astra 27.09), а стояв би
+  // лише на /tm/ — і матрицю (друга вичитка). Прибирається лише поле ціни,
+  // тож число мереж і рішення про обвал фільтр не змінює.
+  if (!newsOnly && вибір.мережі) {
+    const outliers = викидиМереж(вибір.мережі);
+    вибір.мережі = outliers.мережі;
+    for (const причина of outliers.причини) тривога(`викид — ${причина}`);
+  }
+
   if (!newsOnly && вибір.обвал)
     log(`Увага: розібрано мереж ${вибір.стало} замість ${вибір.було} — беру попередню карту`);
   if (!newsOnly && !вибір.свіжі && вибір.мережі)
@@ -168,7 +273,10 @@ async function main() {
   }
 
   // ── latest.json: повний поточний зріз ──
-  if (detail || averages) {
+  // ⚠️ latest.json — лише зі СВІЖОЮ середньою. Без неї сайт лишився б без головної
+  // ціни (сторінку середніх могли зняти звірка чи дата), тож краще вчорашній
+  // цілий знімок; свіжі мережі дня при цьому все одно лягають в історію.
+  if (averages) {
     // Якщо розбивки цього разу немає — лишаємо попередню разом із датою, коли
     // її востаннє бачили. Інакше 200+ SEO-сторінок і карта мереж просто зникнуть
     // із сайту, а це гірше за трохи застарілі цифри з чесною позначкою.
@@ -203,6 +311,16 @@ async function main() {
         `${regionAvg ? Object.keys(regionAvg).length : 0} областей (/reg/)` +
         (detail ? '' : `, матриця область×мережа заморожена на ${breakdownDate}`)
     );
+  } else if (!newsOnly && prev?.networks) {
+    // ⚠️ Свіжої середньої немає — latest.json лишається вчорашнім. Але викид у
+    // ньому не мусить пережити цей запуск: вчорашня карта теж проходить фільтр,
+    // а все інше (дата, середня, позначки) лишається як було. Без цього фільтр
+    // рапортував про викид, а людям і далі показувалось 10 (короткий захід Astra 27.09).
+    const staleClean = викидиМереж(prev.networks);
+    if (staleClean.причини.length) {
+      await writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify({ ...prev, networks: staleClean.мережі }));
+      log(`latest.json: без свіжої середньої лишаю вчорашній знімок, прибрано викидів: ${staleClean.причини.length}`);
+    }
   }
 
   // ── factors.json: дописуємо сьогоднішні Brent/USD, щоб панель чинників не відставала ──
@@ -256,6 +374,7 @@ async function main() {
             // Без нього «одна мережа замість тридцяти шести» не лишала сліду.
             networks: вибір.свіжі },
       ...(вибір.обвал && { обвалМереж: { було: вибір.було, стало: вибір.стало } }),
+      ...(тривоги.length && { тривоги }),
     });
     runlog.runs = runlog.runs.slice(-100);
     await writeFile(path.join(DATA_DIR, 'collect-log.json'), JSON.stringify(runlog));

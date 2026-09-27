@@ -13,7 +13,7 @@ import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
-import { pickHashtags, standoutRegion } from './lib/hashtags.mjs';
+import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -134,11 +134,17 @@ function slideCheapest(latest, ctx) {
 }
 
 // ── Слайд 4: області (найдешевші й найдорожчі) ──
-function slideRegions(latest, ctx) {
-  const list = Object.entries(latest.regionAvg ?? {})
-    .filter(([, p]) => p.dp !== undefined)
+// Області з ціною дизеля — спільне для слайда й підпису: підпис обіцяє слайд
+// «по областях» лише тоді, коли слайд справді буде. null у ціні не валить збір.
+const МІН_ОБЛАСТЕЙ_СЛАЙДА = 6;
+const областіСлайда = latest =>
+  Object.entries(latest.regionAvg ?? {})
+    .filter(([, p]) => Number.isFinite(p?.dp))
     .sort((a, b) => a[1].dp - b[1].dp);
-  if (list.length < 6) return null;
+
+function slideRegions(latest, ctx) {
+  const list = областіСлайда(latest);
+  if (list.length < МІН_ОБЛАСТЕЙ_СЛАЙДА) return null;
 
   const cheap = list.slice(0, 3);
   const dear = list.slice(-3).reverse();
@@ -183,7 +189,7 @@ function slideTrend(latest, history, ctx) {
     `<text x="70" y="200" font-family="'Courier New',monospace" font-size="50" font-weight="bold" fill="${TXT}">Як змінювалась ціна</text>
      <text x="70" y="252" font-family="'Courier New',monospace" font-size="30" fill="${MUT}">дизель, останні ${spanDays} днів</text>
      <polyline points="${line}" fill="none" stroke="${AC}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
-     <text x="70" y="720" font-family="'Courier New',monospace" font-size="44" font-weight="bold" fill="${up ? RED : AC}">${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн (${up ? '+' : '−'}${Math.abs(pct).toFixed(1)}%)</text>
+     <text x="70" y="720" font-family="'Courier New',monospace" font-size="44" font-weight="bold" fill="${up ? RED : AC}">${рядокЗміниКаруселі(diff, pct)}</text>
      <text x="70" y="800" font-family="'Courier New',monospace" font-size="34" fill="${MUT}">Ціни по всіх мережах і областях,</text>
      <text x="70" y="848" font-family="'Courier New',monospace" font-size="34" fill="${MUT}">графіки й прогноз — на сайті</text>
      <rect x="70" y="890" width="640" height="80" rx="16" fill="${BG}" stroke="${AC}" stroke-width="2"/>
@@ -192,7 +198,17 @@ function slideTrend(latest, history, ctx) {
   );
 }
 
-function caption(latest) {
+/**
+ * ⚠️ Рядок зміни на слайді динаміки: при нульовій зміні малювалось «▼ −0,00 грн»
+ * — падіння, якого не було (та сама неправда, що «подешевшав» у голосі).
+ */
+export function рядокЗміниКаруселі(diff, pct) {
+  if (Math.abs(diff) < 0.005) return '= без змін';
+  const up = diff > 0;
+  return `${up ? '▲ +' : '▼ −'}${fmt(Math.abs(diff))} грн (${up ? '+' : '−'}${Math.abs(pct).toFixed(1)}%)`;
+}
+
+export function caption(latest) {
   const f = v => fmt(v);
   const rows = FUELS.filter(([, k]) => latest.avg?.[k] !== undefined)
     .map(([name, k]) => {
@@ -208,10 +224,13 @@ function caption(latest) {
     .sort((a, b) => a[1].dp - b[1].dp)[0];
 
   // область-сюжет дає вузький хештег: у ньому менша конкуренція, ніж у #пальне
-  const region = standoutRegion(latest.regionAvg, 'dp');
+  // ⚠️ Підпис — за тим, що область ЄСТЬ: найдешевша чи найдорожча (рішення Роса 26.09).
+  const виділена = крайняОбласть(latest.regionAvg, 'dp');
+  const region = standout(latest.regionAvg, 'dp')?.name ?? null;   // для хештега
+  const якаОбласть = виділена?.дешевша ? 'Найдешевший' : 'Найдорожчий';
   const regionLine =
-    region && latest.regionAvg?.[region]?.dp !== undefined
-      ? `Найдешевший дизель по областях: ${region} — ${f(latest.regionAvg[region].dp)} грн/л\n\n`
+    виділена
+      ? `${якаОбласть} дизель по областях: ${виділена.name} — ${f(latest.regionAvg[виділена.name].dp)} грн/л\n\n`
       : '';
 
   return (
@@ -219,8 +238,10 @@ function caption(latest) {
     `${rows}\n\n` +
     (cheap ? `Найдешевша мережа: ${cheap[0]} — ${f(cheap[1].dp)} грн/л\n` : '') +
     regionLine +
-    `Гортай карусель: усі види пального, де дешевше, ціни по областях і динаміка за місяць.\n\n` +
-    `Повні дані по 36 мережах і 23 областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
+    // ⚠️ Числа й перелік слайдів — з даних, а не жорсткі: при 4 областях слайда
+    // областей немає, а підпис обіцяв його й казав «23 області» (Astra 26.09).
+    `Гортай карусель: усі види пального, де дешевше${областіСлайда(latest).length >= МІН_ОБЛАСТЕЙ_СЛАЙДА ? ', ціни по областях' : ''} і динаміка за місяць.\n\n` +
+    `Повні дані по ${Object.keys(latest.networks ?? {}).length} мережах і ${Object.keys(latest.regionAvg ?? {}).length} областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
     pickHashtags({ fuel: 'dp', region, change: latest.avgChange?.dp })
   );
 }
