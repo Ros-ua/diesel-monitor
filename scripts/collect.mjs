@@ -213,18 +213,21 @@ async function main() {
     if (звірка.зняти.includes('матриця')) detail = null;
   }
 
-  if (!newsOnly && tmNetworks) {
-    const в = викидиМереж(tmNetworks);
-    tmNetworks = в.мережі;
-    for (const причина of в.причини) тривога(`викид — ${причина}`);
-  }
-
   if (!newsOnly && !averages && !detail && !tmNetworks)
     throw new Error('Жодне джерело цін недоступне — історію не оновлено');
 
   // Ціни по мережах: пряма таблиця /tm/ надійніша за медіану по областях,
   // яку доводилось рахувати зі старої матриці. Медіану лишаємо запасним шляхом.
-  const networks = tmNetworks ?? (detail ? nationalNetworks(detail.regions) : null);
+  let networks = tmNetworks ?? (detail ? nationalNetworks(detail.regions) : null);
+
+  // ⚠️ Викид окремої мережі знімаємо з ПІДСУМКОВОЇ карти — хоч з /tm/, хоч із
+  // запасної матриці /detail/. Раніше фільтр стояв лише на /tm/, і коли /tm/
+  // не відповідав, зіпсована мережа з матриці йшла людям (друга вичитка Astra 27.09).
+  if (!newsOnly && networks) {
+    const outliers = викидиМереж(networks);
+    networks = outliers.мережі;
+    for (const причина of outliers.причини) тривога(`викид — ${причина}`);
+  }
 
   // Дата даних — зі сторінки мінфіну (вона оновлюється ~опівдні за Києвом;
   // вранці сторінка ще показує вчорашні ціни, і їх треба писати під вчорашньою датою)
