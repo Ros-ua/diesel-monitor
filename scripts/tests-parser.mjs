@@ -17,12 +17,13 @@ import { курс, курсНБУ, brentЗYahoo, євроЗгідне, безС�
 import { звіритиДжерела, викидиМереж } from './lib/звірка.mjs';
 import { standout, крайняОбласть } from './lib/hashtags.mjs';
 import { caption as підписКаруселі } from './instagram-carousel.mjs';
-import { підписНайдешевшого } from './instagram-news.mjs';
+import { підписНайдешевшого, pickFuelForCheapest } from './instagram-news.mjs';
+import { networksAreFresh } from './lib/networks-fresh.mjs';
 import { повернутиЗсув } from './lib/зсув-історії.mjs';
 import { записКоментаря, записДиректу, безНіків } from './lib/міст.mjs';
 import { текстГолосу } from './lib/голос.mjs';
 import { підписЗміни } from './instagram-news.mjs';
-import { рядокЗміниКаруселі } from './instagram-carousel.mjs';
+import { рядокЗміниКаруселі, slideCheapest } from './instagram-carousel.mjs';
 import { readFileSync } from 'node:fs';
 import { вибратиМережі } from './lib/мережі.mjs';
 import { значущеЗмінилось, ЛЕТЮЧІ } from './lib/значуще.mjs';
@@ -1248,6 +1249,29 @@ console.log('ВИЧИТКА ASTRA 26.09: ВІСІМ ЗНАХІДОК');
   const п8 = підписКаруселі({ date: '2026-09-26', avg: { dp: 45 }, regionAvg: мало, networks: { A: {}, B: {}, C: {} } });
   проба('карусель: без слайда областей не обіцяє «ціни по областях»', п8.includes('ціни по областях'), false);
   проба('карусель: число мереж і областей — з даних', п8.includes('по 3 мережах і 4 областях'), true);
+}
+
+console.log('');
+console.log('S4: СТАРА КАРТА МЕРЕЖ НЕ «СЬОГОДНІ»');
+{
+  const мережі = { A: { dp: 59, regionCount: 5 }, B: { dp: 60, regionCount: 5 }, C: { dp: 61, regionCount: 5 }, D: { dp: 62, regionCount: 5 } };
+  const свіжа = { date: '2026-09-25', networksDate: '2026-09-25', avg: { dp: 60 }, networks: мережі };
+  const стара = { ...свіжа, networksDate: '2026-09-18' };
+  const безДати = { ...свіжа, networksDate: undefined };
+  проба('S4: карта без networksDate — свіжа', networksAreFresh(безДати), true);
+  проба('S4: networksDate старша за date — не свіжа', networksAreFresh(стара), false);
+  проба('S4: свіжа карта — картка «де найдешевше» є', pickFuelForCheapest(свіжа, null), 'dp');
+  проба('S4: стара карта — картки «де найдешевше» немає', pickFuelForCheapest(стара, null), null);
+  проба('S4: стара карта — підпис без «сьогодні»', підписНайдешевшого(стара, 'dp').includes('сьогодні'), false);
+  проба('S4: стара карта — підпис з датою карти', підписНайдешевшого(стара, 'dp').split('\n')[0], '⛽ Де найдешевший дизель (ціни мереж на 18.09)');
+  проба('S4: свіжа карта — підпис як був', підписНайдешевшого(свіжа, 'dp').split('\n')[0], '⛽ Де сьогодні найдешевший дизель');
+  const ctx = { date: '25.09.2026', no: 3, total: 5 };
+  проба('S4: стара карта — слайда мереж немає', slideCheapest(стара, ctx), null);
+  проба('S4: свіжа карта — слайд мереж є', typeof slideCheapest(свіжа, ctx), 'string');
+  const пс = підписКаруселі(стара);
+  проба('S4: карусель зі старою картою — без «Найдешевша мережа»', пс.includes('Найдешевша мережа'), false);
+  проба('S4: карусель зі старою картою — не обіцяє «де дешевше»', пс.includes('де дешевше'), false);
+  проба('S4: карусель зі свіжою картою — «Найдешевша мережа» є', підписКаруселі(свіжа).includes('Найдешевша мережа: A'), true);
 }
 
 console.log('');

@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
+import { networksAreFresh } from './lib/networks-fresh.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -108,7 +109,9 @@ function slideFuels(latest, ctx) {
 }
 
 // ── Слайд 3: де найдешевше (мережі) ──
-function slideCheapest(latest, ctx) {
+export function slideCheapest(latest, ctx) {
+  // стара карта мереж — слайда «де дешевший» немає (не видаємо за сьогоднішню)
+  if (!networksAreFresh(latest)) return null;
   const rows = Object.entries(latest.networks ?? {})
     .filter(([, p]) => p.dp !== undefined)
     .sort((a, b) => a[1].dp - b[1].dp)
@@ -236,11 +239,11 @@ export function caption(latest) {
   return (
     `⛽ Ціни на пальне в Україні · ${d}.${m}.${y}\n\n` +
     `${rows}\n\n` +
-    (cheap ? `Найдешевша мережа: ${cheap[0]} — ${f(cheap[1].dp)} грн/л\n` : '') +
+    (cheap && networksAreFresh(latest) ? `Найдешевша мережа: ${cheap[0]} — ${f(cheap[1].dp)} грн/л\n` : '') +
     regionLine +
     // ⚠️ Числа й перелік слайдів — з даних, а не жорсткі: при 4 областях слайда
     // областей немає, а підпис обіцяв його й казав «23 області» (Astra 26.09).
-    `Гортай карусель: усі види пального, де дешевше${областіСлайда(latest).length >= МІН_ОБЛАСТЕЙ_СЛАЙДА ? ', ціни по областях' : ''} і динаміка за місяць.\n\n` +
+    `Гортай карусель: усі види пального${networksAreFresh(latest) ? ', де дешевше' : ''}${областіСлайда(latest).length >= МІН_ОБЛАСТЕЙ_СЛАЙДА ? ', ціни по областях' : ''} і динаміка за місяць.\n\n` +
     `Повні дані по ${Object.keys(latest.networks ?? {}).length} мережах і ${Object.keys(latest.regionAvg ?? {}).length} областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
     pickHashtags({ fuel: 'dp', region, change: latest.avgChange?.dp })
   );

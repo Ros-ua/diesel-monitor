@@ -12,6 +12,7 @@ import path from 'node:path';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
 import { fileURLToPath } from 'node:url';
+import { networksAreFresh, shortDate } from './lib/networks-fresh.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -87,7 +88,9 @@ function netCount(latest, fuel) {
     .filter(v => v?.[fuel] !== undefined && (v.regionCount ?? 0) >= 3).length;
 }
 
-function pickFuelForCheapest(latest, lastFuel) {
+export function pickFuelForCheapest(latest, lastFuel) {
+  // стара карта мереж — картки «де сьогодні найдешевше» не буде
+  if (!networksAreFresh(latest)) return null;
   const rich = Object.keys(FUEL_LABELS).filter(k => netCount(latest, k) >= 4);
   if (!rich.length) return null;
   return rich.find(k => k !== lastFuel) ?? rich[0];
@@ -372,8 +375,12 @@ export function підписНайдешевшого(latest, fuel) {
   const виділена = крайняОбласть(latest?.regionAvg, fuel);
   const region = standout(latest?.regionAvg, fuel)?.name ?? null;   // для хештега
   const якаОбласть = виділена?.дешевша ? 'Дешевше за все' : 'Дорожче за все';
+  // ⚠️ Карта мереж старша за дату даних — не «сьогодні», а чесна дата карти.
+  const header = networksAreFresh(latest)
+    ? `⛽ Де сьогодні найдешевший ${label.toLowerCase()}`
+    : `⛽ Де найдешевший ${label.toLowerCase()} (ціни мереж на ${shortDate(latest.networksDate)})`;
   return (
-    `⛽ Де сьогодні найдешевший ${label.toLowerCase()}\n\n` +
+    `${header}\n\n` +
     top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
     (latest?.avg?.[fuel] !== undefined
       ? `\n\nСередня по Україні: ${f(latest.avg[fuel])} грн/л`

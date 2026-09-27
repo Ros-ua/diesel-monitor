@@ -1235,6 +1235,65 @@ const ПІДСАДКИ = [
     стало: `        d1: пара ? changeFromShown(series, пара.from, series[series.length - 1]?.value ?? price) : null,`,
     стереже: `таблиця: «Вчора» від показаної ціни`,
     сюїта: 'tests-front.mjs',
+    імя: `стара карта мереж вважається свіжою`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `  return latest.networksDate === latest.date;`,
+    стало: `  return true;`,
+    стереже: `S4: networksDate старша за date — не свіжа`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `без networksDate карта вважається старою`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `  if (!latest?.networksDate) return true;
+`,
+    стало: ``,
+    стереже: `S4: карта без networksDate — свіжа`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `картка «де найдешевше» і зі старою картою`,
+    файл: `instagram-news.mjs`,
+    було: `  if (!networksAreFresh(latest)) return null;
+  const rich`,
+    стало: `  const rich`,
+    стереже: `S4: стара карта — картки «де найдешевше» немає`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `підпис «сьогодні» і зі старою картою`,
+    файл: `instagram-news.mjs`,
+    було: `  const header = networksAreFresh(latest)
+`,
+    стало: `  const header = true
+`,
+    стереже: `S4: стара карта — підпис без «сьогодні»`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `слайд мереж і зі старою картою`,
+    файл: `instagram-carousel.mjs`,
+    було: `  if (!networksAreFresh(latest)) return null;
+  const rows`,
+    стало: `  const rows`,
+    стереже: `S4: стара карта — слайда мереж немає`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `«Найдешевша мережа» і зі старою картою`,
+    файл: `instagram-carousel.mjs`,
+    було: `    (cheap && networksAreFresh(latest) ? \`Найдешевша мережа:`,
+    стало: `    (cheap ? \`Найдешевша мережа:`,
+    стереже: `S4: карусель зі старою картою — без «Найдешевша мережа»`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `карусель обіцяє «де дешевше» і зі старою картою`,
+    файл: `instagram-carousel.mjs`,
+    було: `усі види пального\${networksAreFresh(latest) ? ', де дешевше' : ''}\${`,
+    стало: `усі види пального, де дешевше\${`,
+    стереже: `S4: карусель зі старою картою — не обіцяє «де дешевше»`,
+    сюїта: 'tests-parser.mjs',
   },
   {
     імя: `збір знову з правами Pages на весь файл`,
