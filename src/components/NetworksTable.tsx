@@ -48,7 +48,10 @@ export default function NetworksTable() {
   const fuelShort = FUEL_SHORT[fuel];
   // «Вчора» — попередній день збору; якщо він не календарне вчора, підпис чесно
   // каже, з якого дня рахуємо (див. lastTwoNetworkDays)
-  const пара = useMemo(() => lastTwoNetworkDays(history.days), [history]);
+  const пара = useMemo(
+    () => lastTwoNetworkDays(history.days, latest.networksDate ?? latest.date),
+    [history, latest.networksDate, latest.date]
+  );
   const d1Label = пара ? previousDayLabel(пара.from, пара.to) : 'Вчора';
   const columns = useMemo(() => buildColumns(fuelShort, d1Label), [fuelShort, d1Label]);
 

@@ -52,6 +52,22 @@ const пара = lastTwoNetworkDays(дні);
   проба('таблиця: «Вчора» не через changeOver(…, 1)', /changeOver\(series,\s*1\)/.test(т), false);
 }
 
+// ⚠️ Третя вичитка Astra 27.09 №4: ціна в таблиці — з latest (24.09), а «Вчора»
+// рахувалось по історії до 25.09 (день є в історії, latest лишився старим, бо
+// сторінка середніх не відповіла): 100 і «Вчора +10» до ціни, якої на сайті немає.
+{
+  const історія = [
+    { date: '2026-09-23', networks: { A: { dp: 95 } } },
+    { date: '2026-09-24', networks: { A: { dp: 100 } } },
+    { date: '2026-09-25', networks: { A: { dp: 110 } } },
+  ];
+  проба('«Вчора» рахується до дати карти мереж у latest',
+    lastTwoNetworkDays(історія, '2026-09-24'), { from: '2026-09-23', to: '2026-09-24' });
+  проба('без дати-межі — два останні дні збору', lastTwoNetworkDays(історія), { from: '2026-09-24', to: '2026-09-25' });
+  const т = readFileSync(new URL('../src/components/NetworksTable.tsx', import.meta.url), 'utf8');
+  проба('таблиця: «Вчора» до дати карти latest', /lastTwoNetworkDays\(history\.days,\s*latest\.networksDate \?\? latest\.date\)/.test(т), true);
+}
+
 console.log('');
 console.log('F3: «ДОБОВЕ» — ЛИШЕ СУСІДНІ ДНІ');
 // Справжній випадок: +9,53 грн «18 бер» було ростом за 12 днів (06.03 → 18.03).

@@ -68,8 +68,11 @@ export function changeOver(
  * вчора: Мінфін не публікує у вихідні. Раніше колонку рахував changeOver(…, 1)
  * з допуском 1,5 дня, і щопонеділка (п'ятниця — за 3 дні) вся колонка була «—».
  */
-export function lastTwoNetworkDays(days: HistoryDay[]): { from: string; to: string } | null {
-  const з = days.filter(d => d.networks && Object.keys(d.networks).length);
+export function lastTwoNetworkDays(days: HistoryDay[], upTo?: string): { from: string; to: string } | null {
+  // upTo — дата карти мереж, чию ціну показує таблиця (latest.networksDate). Без межі
+  // історія, новіша за latest, давала ціну з одного знімка, а «Вчора» — з іншого
+  // (третя вичитка Astra 27.09: 100 і «Вчора +10» до ціни 110, якої на сайті немає).
+  const з = days.filter(d => d.networks && Object.keys(d.networks).length && (!upTo || d.date <= upTo));
   return з.length < 2 ? null : { from: з[з.length - 2].date, to: з[з.length - 1].date };
 }
 
