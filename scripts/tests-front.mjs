@@ -7,7 +7,7 @@ process.env.TZ = 'Europe/Kyiv';
 import { readFileSync } from 'node:fs';
 
 const { isoFromMs, previousDayLabel } = await import('../src/lib/format.ts');
-const { extremeMoves, lastTwoNetworkDays, changeBetween } = await import('../src/lib/stats.ts');
+const { extremeMoves, lastTwoNetworkDays, changeBetween, changeFromShown } = await import('../src/lib/stats.ts');
 
 let провалів = 0;
 function проба(назва, вийшло, чекали) {
@@ -66,6 +66,17 @@ const пара = lastTwoNetworkDays(дні);
   проба('без дати-межі — два останні дні збору', lastTwoNetworkDays(історія), { from: '2026-09-24', to: '2026-09-25' });
   const т = readFileSync(new URL('../src/components/NetworksTable.tsx', import.meta.url), 'utf8');
   проба('таблиця: «Вчора» до дати карти latest', /lastTwoNetworkDays\(history\.days,\s*latest\.networksDate \?\? latest\.date\)/.test(т), true);
+}
+
+// ⚠️ Короткий захід Astra 27.09 22:51 №2: історію за 24.09 перезаписав повторний
+// збір (A: 110), а latest за той самий день лишився з A: 100. «Вчора» мусить
+// рахуватися від ПОКАЗАНОЇ ціни, інакше «100 і Вчора +15».
+{
+  const серія = [{ date: '2026-09-23', value: 95 }, { date: '2026-09-24', value: 110 }];
+  проба('«Вчора» від показаної ціни, а не від історії', changeFromShown(серія, '2026-09-23', 100), 5);
+  проба('«Вчора»: попереднього дня немає — «—»', changeFromShown(серія, '2026-09-22', 100), null);
+  const т = readFileSync(new URL('../src/components/NetworksTable.tsx', import.meta.url), 'utf8');
+  проба('таблиця: «Вчора» від показаної ціни', /changeFromShown\(series,\s*пара\.from,\s*price\)/.test(т), true);
 }
 
 console.log('');

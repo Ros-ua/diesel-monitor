@@ -77,6 +77,18 @@ export function lastTwoNetworkDays(days: HistoryDay[], upTo?: string): { from: s
 }
 
 /** Зміна між двома КОНКРЕТНИМИ днями серії; нема будь-якої з точок — null */
+/**
+ * «Вчора» від ПОКАЗАНОЇ ціни: показана ціна мінус ціна мережі в попередній день збору.
+ *
+ * ⚠️ Історію за день може перезаписати повторний збір (A: 110), а latest за той
+ * самий день лишитися з A: 100 — тоді різниця двох точок історії давала
+ * «100 і Вчора +15» (короткий захід Astra 27.09). Від показаної ціни — «+5».
+ */
+export function changeFromShown(series: SeriesPoint[], from: string, shown: number): number | null {
+  const base = series.find(p => p.date === from);
+  return base ? shown - base.value : null;
+}
+
 export function changeBetween(series: SeriesPoint[], from: string, to: string): { abs: number; pct: number } | null {
   const a = series.find(p => p.date === from);
   const b = series.find(p => p.date === to);

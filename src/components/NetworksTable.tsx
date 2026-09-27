@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
-import { changeBetween, changeOver, lastTwoNetworkDays, networkSeries } from '../lib/stats';
+import { changeFromShown, changeOver, lastTwoNetworkDays, networkSeries } from '../lib/stats';
 import { changeColor, fmtPrice, fmtSigned, previousDayLabel } from '../lib/format';
 import { FUEL_SHORT, type NetworkPrices } from '../types';
 
@@ -90,7 +90,7 @@ export default function NetworksTable() {
       rows.push({
         name,
         price,
-        d1: пара ? changeBetween(series, пара.from, пара.to)?.abs ?? null : null,
+        d1: пара ? changeFromShown(series, пара.from, price) : null,
         d7: changeOver(series, 7)?.abs ?? null,
         d30: changeOver(series, 30)?.abs ?? null,
         vs: avgPrice !== undefined ? price - avgPrice : null,

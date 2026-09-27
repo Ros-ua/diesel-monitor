@@ -311,6 +311,16 @@ async function main() {
         `${regionAvg ? Object.keys(regionAvg).length : 0} областей (/reg/)` +
         (detail ? '' : `, матриця область×мережа заморожена на ${breakdownDate}`)
     );
+  } else if (!newsOnly && prev?.networks) {
+    // ⚠️ Свіжої середньої немає — latest.json лишається вчорашнім. Але викид у
+    // ньому не мусить пережити цей запуск: вчорашня карта теж проходить фільтр,
+    // а все інше (дата, середня, позначки) лишається як було. Без цього фільтр
+    // рапортував про викид, а людям і далі показувалось 10 (короткий захід Astra 27.09).
+    const staleClean = викидиМереж(prev.networks);
+    if (staleClean.причини.length) {
+      await writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify({ ...prev, networks: staleClean.мережі }));
+      log(`latest.json: без свіжої середньої лишаю вчорашній знімок, прибрано викидів: ${staleClean.причини.length}`);
+    }
   }
 
   // ── factors.json: дописуємо сьогоднішні Brent/USD, щоб панель чинників не відставала ──
