@@ -1407,7 +1407,7 @@ const ПІДСАДКИ = [
 `,
     стало: `          CHAT: '-1001234567890' # CHAT: \${{ vars.TG_OWNER_CHAT }}
 `,
-    стереже: `ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT`,
+    стереже: `ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT у кроці відправки`,
     сюїта: 'tests-security.mjs',
   },
   {
@@ -1416,6 +1416,36 @@ const ПІДСАДКИ = [
     було: `    - cron: '47 */4 * * *'`,
     стало: `    - cron: '47 0-23/4,1-23 * * *'`,
     стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: задача з write-all при порожніх правах згори`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `  refresh:
+    runs-on: ubuntu-latest
+`,
+    стало: `  refresh:
+    runs-on: ubuntu-latest
+    permissions: write-all
+`,
+    стереже: `ig-refresh.yml: задачі теж без прав`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `tg-post: частий cron з обмеженням днів`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '*/5 * * * 0-6'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT обнулено в скрипті`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          res=$(curl -s -G`,
+    стало: `          CHAT=''
+          res=$(curl -s -G`,
+    стереже: `ig-refresh.yml: CHAT не перевизначено в скрипті`,
     сюїта: 'tests-security.mjs',
   },
 ];

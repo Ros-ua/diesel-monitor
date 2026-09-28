@@ -19,8 +19,11 @@ const ROOT = path.join(SCRIPTS, '..');
 const WF_DIR = path.join(ROOT, '.github', 'workflows');
 
 let failed = 0;
+// Канонічний JSON: порядок ключів у YAML нічого не значить (вичитка Astra 28.09 — хибна червоність)
+const canon = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x));
 function probe(name, got, want) {
-  const ok = JSON.stringify(got) === JSON.stringify(want);
+  const ok = canon(got) === canon(want);
   if (!ok) failed++;
   console.log(`  ${ok ? '✅' : '❌'} ${name.padEnd(64)} -> ${JSON.stringify(got)}`);
 }
@@ -52,12 +55,13 @@ function cronCount(field, min, max) {
   }
   return set.size;
 }
-/** Автоматичних запусків на добу з on.schedule (день місяця й тижня в наших cron — «*»). */
+// Скільки автоматичних запусків МАКСИМУМ за добу з on.schedule.
+// ⚠️ Дні місяця й тижня не зменшують рахунок: «кожні 5 хвилин, дні 0-6» — це 288 запусків
+// у кожен день, коли спрацьовує (раніше такий рядок відкидався — вичитка Astra 28.09).
 function runsPerDay(doc) {
   const sched = doc?.on?.schedule;
   if (!Array.isArray(sched)) return 0;
   return sched.map(s => String(s.cron).trim().split(/\s+/))
-    .filter(f => f[2] === '*' && f[4] === '*')
     .reduce((sum, f) => sum + cronCount(f[0], 0, 59) * cronCount(f[1], 0, 23), 0);
 }
 
@@ -83,9 +87,25 @@ probe('ig-refresh.yml: явно без прав токена', perms(wf('ig-refr
 probe('notify.yml: явно без прав токена', perms(wf('notify.yml').permissions), {});
 {
   // список — з теки: новий workflow без permissions теж почервонить пробу
-  const files = readdirSync(WF_DIR).filter(f => f.endsWith('.yml'));
+  // .yaml GitHub виконує так само, як .yml (вичитка Astra 28.09)
+  const files = readdirSync(WF_DIR).filter(f => /\.ya?ml$/.test(f));
   probe('workflow знайдено (стенд не сліпий)', files.length >= 13, true);
   probe('усі workflow мають явний permissions', files.filter(f => perms(wf(f).permissions) === null), []);
+  // write-all / read-all — ніде: ні згори, ні в задачі (права задачі перекривають верхні)
+  const wide = files.flatMap(f => { const d = wf(f);
+    return [d.permissions, ...Object.values(d.jobs ?? {}).map(j => j.permissions)]
+      .filter(p => typeof p === 'string').map(p => `${f}: ${p}`); });
+  probe('ніде немає write-all/read-all', wide, []);
+}
+{
+  // ⚠️ Права ЗАДАЧІ перекривають верхні (вичитка Astra 28.09): у файлах, яким токен
+  // не потрібен, задачі теж без прав; у зборах — лише названі задачі мають права.
+  const jobPerms = f => Object.fromEntries(Object.entries(wf(f).jobs ?? {}).map(([k, j]) => [k, perms(j.permissions)]));
+  probe('ig-refresh.yml: задачі теж без прав', Object.values(jobPerms('ig-refresh.yml')).every(p => p === null || canon(p) === '{}'), true);
+  probe('notify.yml: задачі теж без прав', Object.values(jobPerms('notify.yml')).every(p => p === null || canon(p) === '{}'), true);
+  probe('ig-insights.yml: задачі без власних прав', Object.values(jobPerms('ig-insights.yml')).every(p => p === null), true);
+  for (const [f, job] of [['collect.yml', 'collect'], ['news.yml', 'news'], ['ev.yml', 'ev']])
+    probe(`${f}: права лише в задачах ${job} і deploy`, Object.keys(jobPerms(f)).filter(k => jobPerms(f)[k] !== null).sort(), [job, 'deploy'].sort());
 }
 
 console.log('');
@@ -97,9 +117,14 @@ console.log('ДРІБНЕ (security п.10–11)');
   const ids = [...run.matchAll(/chat_id=(\S+)/g)].map(m => m[1]);
   probe('ig-refresh.yml: chat_id не вписаний числом', ids.some(v => /^["']?-?\d/.test(v)), false);
   probe('ig-refresh.yml: кожен chat_id — це "$CHAT"', [ids.length > 0, ids.every(v => v === '"$CHAT"')], [true, true]);
-  // значення після розбору YAML: коментар «# CHAT: ${{ vars… }}» тут уже не рахується
-  const chats = steps.map(s => s.env?.CHAT).filter(v => v !== undefined);
-  probe('ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT', chats.length > 0 && chats.every(v => /^\$\{\{\s*vars\.TG_OWNER_CHAT\s*\}\}$/.test(v)), true);
+  // ⚠️ CHAT мусить діяти САМЕ в кроці відправки (env кроку, задачі чи файлу) і не
+  // перевизначатись у скрипті (вичитка Astra 28.09: env в іншому кроці чи CHAT='' проходили).
+  const VARS = /^\$\{\{\s*vars\.TG_OWNER_CHAT\s*\}\}$/;
+  const sending = Object.values(d.jobs ?? {}).flatMap(j => (j.steps ?? []).map(s => ({ s, j })))
+    .filter(({ s }) => /chat_id=/.test(s.run ?? ''));
+  probe('ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT у кроці відправки', sending.length > 0 &&
+    sending.every(({ s, j }) => VARS.test(String(s.env?.CHAT ?? j.env?.CHAT ?? d.env?.CHAT ?? ''))), true);
+  probe('ig-refresh.yml: CHAT не перевизначено в скрипті', sending.some(({ s }) => /(^|[\s;])CHAT=/.test(s.run)), false);
 }
 {
   const gi = readFileSync(path.join(ROOT, '.gitignore'), 'utf8').split(/\r?\n/).map(s => s.trim());
@@ -128,7 +153,9 @@ console.log('КЛЮЧ GEMINI НЕ В АДРЕСІ (security п.9)');
 import { appendFileSync } from 'node:fs';
 globalThis.fetch = async (url, opts = {}) => {
   appendFileSync(${JSON.stringify(path.join(root, 'req.jsonl').replace(/\\/g, '/'))},
-    JSON.stringify({ url: String(url), method: opts.method, body: String(opts.body ?? ''), headers: opts.headers ?? {} }) + '\\n');
+    JSON.stringify({ url: String(url), method: opts.method, body: String(opts.body ?? ''),
+      // Headers, масив пар чи обʼєкт — усе до одного вигляду (вичитка Astra 28.09)
+      headers: Object.fromEntries(new Headers(opts.headers ?? {}).entries()) }) + '\\n');
   const audio = Buffer.alloc(4800).toString('base64');
   return { ok: true, status: 200, async text() { return ''; },
     async json() { return { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;rate=24000', data: audio } }] } }] }; } };
