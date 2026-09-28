@@ -44,10 +44,12 @@ async function main() {
   console.error(`озвучка: «${text}»`);
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // ⚠️ Ключ — у заголовку, а не в адресі (?key=): адреси частіше потрапляють
+      // у журнали й повідомлення про помилки (звіт безпеки 28.09, п.9).
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Прочитай спокійним упевненим дикторським голосом українською: ${text}` }] }],
         generationConfig: {

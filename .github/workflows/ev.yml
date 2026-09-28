@@ -6,10 +6,9 @@ on:
     - cron: '20 3 * * 1'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+# ⚠️ Права — по задачах (звіт безпеки 28.09, п.3): збір запускає npm ci і тримає
+# токени, тож Pages йому не потрібні; pages/id-token — лише задачі deploy.
+permissions: {}
 
 concurrency:
   group: collect
@@ -18,6 +17,8 @@ concurrency:
 jobs:
   ev:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # збір сам пушить оновлені дані
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
     steps:
@@ -46,6 +47,10 @@ jobs:
     needs: ev
     if: needs.ev.outputs.changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     concurrency:
       group: pages
       cancel-in-progress: false

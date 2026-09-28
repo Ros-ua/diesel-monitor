@@ -1236,6 +1236,108 @@ const ПІДСАДКИ = [
     стереже: `таблиця: «Вчора» від показаної ціни`,
     сюїта: 'tests-front.mjs',
   },
+  {
+    імя: `збір знову з правами Pages на весь файл`,
+    файл: `../.github/workflows/collect.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions:
+  contents: write
+  pages: write
+  id-token: write
+`,
+    стереже: `collect.yml: згори прав немає`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `деплой без прав Pages`,
+    файл: `../.github/workflows/collect.yml`,
+    було: `    if: needs.collect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+`,
+    стало: `    if: needs.collect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+`,
+    стереже: `collect.yml: pages/id-token — лише задачі deploy`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-insights без явних прав`,
+    файл: `../.github/workflows/ig-insights.yml`,
+    було: `permissions:
+  contents: read
+
+`,
+    стало: ``,
+    стереже: `ig-insights.yml: явно лише читання`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `chat_id знову числом у публічному коді`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `Токен Instagram не продовжився`,
+    стало: `Токен Instagram не продовжився (chat_id=715480502)`,
+    стереже: `ig-refresh.yml: chat_id не вписаний числом`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `.env знову не в .gitignore`,
+    файл: `../.gitignore`,
+    було: `
+.env
+.env.*
+`,
+    стало: `
+`,
+    стереже: `.gitignore: .env і .env.* не потрапляють у репо`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `новини знову кожні 2 години`,
+    файл: `../.github/workflows/news.yml`,
+    було: `    - cron: '37 */3 * * *'`,
+    стало: `    - cron: '25 */2 * * *'`,
+    стереже: `news.yml: не частіше разу на 3 години`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `пост новин знову кожні 2 години`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '15 */2 * * *'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ключ Gemini знову в адресі`,
+    файл: `reel-voice.mjs`,
+    було: `:generateContent\`,`,
+    стало: `:generateContent?key=\${key}\`,`,
+    стереже: `reel-voice: ключа немає в адресі запиту`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ключ Gemini не в заголовку`,
+    файл: `reel-voice.mjs`,
+    було: `headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },`,
+    стало: `headers: { 'Content-Type': 'application/json' },`,
+    стереже: `reel-voice: ключ — у заголовку x-goog-api-key`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `workflow без явних прав`,
+    файл: `../.github/workflows/ig-news.yml`,
+    було: `permissions:
+  contents: write
+`,
+    стало: ``,
+    стереже: `усі workflow мають явний permissions`,
+    сюїта: 'tests-security.mjs',
+  },
 ];
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
@@ -1255,6 +1357,9 @@ function накопії(робота) {
     // (tests-front.mjs) читають ../src. Шляхи підсадок — від scripts/.
     cpSync(SCRIPTS, path.join(корінь, 'scripts'), { recursive: true });
     cpSync(path.join(SCRIPTS, '..', 'src'), path.join(корінь, 'src'), { recursive: true });
+    // проби безпеки читають workflow і .gitignore — у копії вони теж мусять бути
+    cpSync(path.join(SCRIPTS, '..', '.github'), path.join(корінь, '.github'), { recursive: true });
+    cpSync(path.join(SCRIPTS, '..', '.gitignore'), path.join(корінь, '.gitignore'));
     return робота(корінь);
   } finally {
     rmSync(корінь, { recursive: true, force: true });
@@ -1269,7 +1374,7 @@ function накопії(робота) {
 // вони самі по собі справні. 20.09.2026 так і вийшло: tests-parser.mjs був
 // червоний ще до правки, і разом із ним мовчки випали всі інші.
 const хворі = new Set();
-for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs']) {
+for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs', 'tests-security.mjs']) {
   const базовий = накопії(к => прогін(к, сюїта));
   if (базовий.впало) {
     хворі.add(сюїта);

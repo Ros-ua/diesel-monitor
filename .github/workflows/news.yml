@@ -1,15 +1,15 @@
-name: Збір новин (кожні 2 години)
+name: Збір новин (кожні 3 години)
 
 on:
   schedule:
-    # кожні 2 години о :25 (не перетинається зі збором цін о :10)
-    - cron: '25 */2 * * *'
+    # кожні 3 години о :37 — непопулярна хвилина, GitHub менше запізнюється;
+    # раніше кожні 2 години (звіт health 28.09: news — найбільше запусків)
+    - cron: '37 */3 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+# ⚠️ Права — по задачах (звіт безпеки 28.09, п.3): збір запускає npm ci і тримає
+# токени, тож Pages йому не потрібні; pages/id-token — лише задачі deploy.
+permissions: {}
 
 # та сама група, що й у збору цін — запуски не конфліктують за git push
 concurrency:
@@ -19,6 +19,8 @@ concurrency:
 jobs:
   news:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # збір сам пушить оновлені дані
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
     steps:
@@ -58,6 +60,10 @@ jobs:
     needs: news
     if: needs.news.outputs.changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     concurrency:
       group: pages
       cancel-in-progress: false
