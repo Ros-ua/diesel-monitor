@@ -10,6 +10,9 @@ on:
     - cron: '0 5 1 * *' # 1-го числа щомісяця
   workflow_dispatch:
 
+# GITHUB_TOKEN тут не потрібен зовсім: секрет переписує GH_PAT (звіт безпеки 28.09, п.4)
+permissions: {}
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -19,6 +22,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           OLD: ${{ secrets.INSTAGRAM_TOKEN }}
           TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # chat_id власника — зі змінних репозиторію, а не числом у публічному коді (п.11)
+          CHAT: ${{ vars.TG_OWNER_CHAT }}
         run: |
           res=$(curl -s -G 'https://graph.instagram.com/refresh_access_token' \
             --data-urlencode 'grant_type=ig_refresh_token' \
@@ -30,7 +35,7 @@ jobs:
             echo "Продовжити не вдалося: $(echo "$res" | jq -c '.error // .')"
             if [ -n "$TG" ]; then
               curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" \
-                -d chat_id=715480502 \
+                -d chat_id="$CHAT" \
                 -d text="⚠️ Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)."
             fi
             exit 1
@@ -40,7 +45,7 @@ jobs:
             echo "GH_PAT не заданий — секрет не перезаписано."
             if [ -n "$TG" ]; then
               curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" \
-                -d chat_id=715480502 \
+                -d chat_id="$CHAT" \
                 -d text="ℹ️ Токен Instagram продовжено на $days дн., але секрет у GitHub не оновлено (немає GH_PAT). Скажи Клоду — доналаштує."
             fi
             exit 1

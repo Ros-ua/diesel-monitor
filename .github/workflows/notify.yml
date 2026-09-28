@@ -15,6 +15,9 @@ on:
         required: false
         type: string
 
+# GITHUB_TOKEN не потрібен: лише запит до Telegram (звіт безпеки 28.09, п.4)
+permissions: {}
+
 jobs:
   send:
     runs-on: ubuntu-latest
