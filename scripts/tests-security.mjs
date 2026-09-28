@@ -8,7 +8,7 @@
 // cron, коментар після schedule:… Справжній розбирач закриває цей клас цілком.
 // reel-voice перевіряється ПОВЕДІНКОЮ: скрипт запускається з підміненим fetch.
 
-import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -65,7 +65,10 @@ function runsPerDay(doc) {
   // ⚠️ Максимум по днях тижня: рядки для різних днів не додаються (вичитка Astra 28.09 —
   // сім рядків «щогодини в день N» давали 168 замість 24). 7 — теж неділя.
   const days = f => { const s = new Set(); for (const part of f.split(',')) {
-    const [range, st] = part.split('/'); const step = st ? Number(st) : 1;
+    // SUN…SAT GitHub теж приймає (вичитка Astra 28.09: MON-FRI давало 0 днів)
+    const DOW = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+    const [range0, st] = part.split('/'); const step = st ? Number(st) : 1;
+    const range = range0.toUpperCase().replace(/[A-Z]{3}/g, n => String(DOW[n] ?? n));
     const [lo, hi] = range === '*' ? [0, 6] : range.includes('-') ? range.split('-').map(Number) : [Number(range), st ? 6 : Number(range)];
     for (let v = lo; v <= hi; v += step) s.add(v % 7); } return s; };
   let best = 0;
@@ -85,6 +88,7 @@ probe('розбирач: закоментований розклад — нул�
 probe('розбирач: діапазон годин 0-23 — 24 запуски', runsPerDay(yaml("on:\n  schedule:\n    - cron: '0 0-23 * * *'")), 24);
 probe('розбирач: сім рядків «щогодини в день N» — 24 на добу', runsPerDay(yaml('on:\n  schedule:\n' +
   [0, 1, 2, 3, 4, 5, 6].map(n => `    - cron: '0 * * * ${n}'\n`).join(''))), 24);
+probe('розбирач: дні буквами MON-FRI — 288 на добу', runsPerDay(yaml("on:\n  schedule:\n    - cron: '*/5 * * * MON-FRI'")), 288);
 probe('розбирач: «кожні 5 хв у дні 0-6» — 288 на добу', runsPerDay(yaml("on:\n  schedule:\n    - cron: '*/5 * * * 0-6'")), 288);
 
 console.log('');
@@ -140,6 +144,9 @@ console.log('ДРІБНЕ (security п.10–11)');
   const sending = Object.values(d.jobs ?? {}).flatMap(j => (j.steps ?? []).map(s => ({ s, j })))
     .filter(({ s }) => /chat_id=/.test(s.run ?? ''));
   const sent = [];
+  // ⚠️ Обидві гілки: refresh не вдався (jq нічого не дав) і вдався (jq дав токен) —
+  // відправка в гілці успіху теж мусить іти на vars (вичитка Astra 28.09).
+  for (const jqMode of ['fail', 'ok'])
   for (const { s, j } of sending) {
     const dir = mkdtempSync(path.join(tmpdir(), 'diesel-sh-'));
     try {
@@ -147,8 +154,12 @@ console.log('ДРІБНЕ (security п.10–11)');
       const logf = path.join(dir, 'curl.log').replace(/\\/g, '/');
       // curl пише свої аргументи; refresh отримує порожню відповідь → гілка «не вдалося» → повідомлення
       writeFileSync(path.join(bin, 'curl'), `#!/bin/bash\nprintf '%s\\n' "$*" >> '${logf}'\necho '{}'\n`);
-      writeFileSync(path.join(bin, 'jq'), '#!/bin/bash\ncat > /dev/null\n');
+      writeFileSync(path.join(bin, 'jq'), jqMode === 'ok'
+        ? '#!/bin/bash\ncat > /dev/null\ncase "$*" in *access_token*) echo probe-new-token;; *expires_in*) echo 59;; esac\n'
+        : '#!/bin/bash\ncat > /dev/null\n');
       writeFileSync(path.join(bin, 'gh'), '#!/bin/bash\ncat > /dev/null\n');
+      // на Linux без біта виконання bash узяв би справжній curl (вичитка Astra 28.09)
+      for (const f of ['curl', 'jq', 'gh']) chmodSync(path.join(bin, f), 0o755);
       const script = path.join(dir, 'step.sh');
       writeFileSync(script, expr(s.run));
       const env = { ...process.env, PATH: bin.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, l) => '/' + l.toLowerCase()) + ':' + process.env.PATH };
@@ -188,7 +199,8 @@ console.log('КЛЮЧ GEMINI НЕ В АДРЕСІ (security п.9)');
 import { appendFileSync } from 'node:fs';
 globalThis.fetch = async (url, opts = {}) => {
   // fetch(new Request(...)) — теж законний виклик (вичитка Astra 28.09): беремо все з Request
-  if (url instanceof Request) opts = { method: url.method, headers: url.headers, body: await url.clone().text() }, url = url.url;
+  // fetch(Request, init): init перекриває Request — як у справжньому fetch (вичитка Astra 28.09)
+  if (url instanceof Request) { const r = new Request(url, opts); opts = { method: r.method, headers: r.headers, body: await r.clone().text() }; url = r.url; }
   appendFileSync(${JSON.stringify(path.join(root, 'req.jsonl').replace(/\\/g, '/'))},
     JSON.stringify({ url: String(url), method: opts.method, body: String(opts.body ?? ''),
       // Headers, масив пар чи обʼєкт — усе до одного вигляду (вичитка Astra 28.09)

@@ -1457,6 +1457,15 @@ const ПІДСАДКИ = [
     стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
     сюїта: 'tests-security.mjs',
   },
+  {
+    імя: `ig-refresh: інший адресат у гілці успіху`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          echo "Токен продовжено ще на $days днів."`,
+    стало: `          echo "Токен продовжено ще на $days днів."
+          curl -s -X POST "https://api.telegram.org/bot$TG/sendMessage" -d chat_id="123456" -d text=ok`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
 ];
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
