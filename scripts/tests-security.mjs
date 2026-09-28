@@ -61,8 +61,18 @@ function cronCount(field, min, max) {
 function runsPerDay(doc) {
   const sched = doc?.on?.schedule;
   if (!Array.isArray(sched)) return 0;
-  return sched.map(s => String(s.cron).trim().split(/\s+/))
-    .reduce((sum, f) => sum + cronCount(f[0], 0, 59) * cronCount(f[1], 0, 23), 0);
+  const crons = sched.map(s => String(s.cron).trim().split(/\s+/));
+  // ⚠️ Максимум по днях тижня: рядки для різних днів не додаються (вичитка Astra 28.09 —
+  // сім рядків «щогодини в день N» давали 168 замість 24). 7 — теж неділя.
+  const days = f => { const s = new Set(); for (const part of f.split(',')) {
+    const [range, st] = part.split('/'); const step = st ? Number(st) : 1;
+    const [lo, hi] = range === '*' ? [0, 6] : range.includes('-') ? range.split('-').map(Number) : [Number(range), st ? 6 : Number(range)];
+    for (let v = lo; v <= hi; v += step) s.add(v % 7); } return s; };
+  let best = 0;
+  for (let d = 0; d < 7; d++)
+    best = Math.max(best, crons.filter(f => days(f[4]).has(d))
+      .reduce((sum, f) => sum + cronCount(f[0], 0, 59) * cronCount(f[1], 0, 23), 0));
+  return best;
 }
 
 console.log('РОЗБИРАЧ НЕ СЛІПИЙ (власні проби на еталонних входах)');
@@ -73,6 +83,9 @@ probe('розбирач: коментар після schedule: не вимика
 probe('розбирач: закоментований розклад — нуль запусків',
   runsPerDay(yaml("on:\n  # schedule:\n  #   - cron: '0 0 * * *'\n  workflow_dispatch:")), 0);
 probe('розбирач: діапазон годин 0-23 — 24 запуски', runsPerDay(yaml("on:\n  schedule:\n    - cron: '0 0-23 * * *'")), 24);
+probe('розбирач: сім рядків «щогодини в день N» — 24 на добу', runsPerDay(yaml('on:\n  schedule:\n' +
+  [0, 1, 2, 3, 4, 5, 6].map(n => `    - cron: '0 * * * ${n}'\n`).join(''))), 24);
+probe('розбирач: «кожні 5 хв у дні 0-6» — 288 на добу', runsPerDay(yaml("on:\n  schedule:\n    - cron: '*/5 * * * 0-6'")), 288);
 
 console.log('');
 console.log('ПРАВА WORKFLOW (security п.3–4)');
@@ -117,14 +130,36 @@ console.log('ДРІБНЕ (security п.10–11)');
   const ids = [...run.matchAll(/chat_id=(\S+)/g)].map(m => m[1]);
   probe('ig-refresh.yml: chat_id не вписаний числом', ids.some(v => /^["']?-?\d/.test(v)), false);
   probe('ig-refresh.yml: кожен chat_id — це "$CHAT"', [ids.length > 0, ids.every(v => v === '"$CHAT"')], [true, true]);
-  // ⚠️ CHAT мусить діяти САМЕ в кроці відправки (env кроку, задачі чи файлу) і не
-  // перевизначатись у скрипті (вичитка Astra 28.09: env в іншому кроці чи CHAT='' проходили).
-  const VARS = /^\$\{\{\s*vars\.TG_OWNER_CHAT\s*\}\}$/;
+  // ⚠️ Куди РЕАЛЬНО піде повідомлення — перевіряємо ПОВЕДІНКОЮ: скрипт кроку відправки
+  // виконується в bash, як у Actions (-eo pipefail), з env кроку/задачі/файлу, а curl і
+  // jq підмінені. Так ловиться будь-яке переприсвоєння (CHAT='', read -r CHAT, env в
+  // іншому кроці…) — текстові перевірки вичитка Astra 28.09 обходила тричі.
+  const VARS_CHAT = 'VARS-OWNER-CHAT-777';
+  const expr = v => String(v).replace(/\$\{\{\s*([^}]+?)\s*\}\}/g, (_, e) =>
+    /^vars\.TG_OWNER_CHAT$/.test(e) ? VARS_CHAT : `probe-${e.replace(/\W+/g, '-')}`);
   const sending = Object.values(d.jobs ?? {}).flatMap(j => (j.steps ?? []).map(s => ({ s, j })))
     .filter(({ s }) => /chat_id=/.test(s.run ?? ''));
-  probe('ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT у кроці відправки', sending.length > 0 &&
-    sending.every(({ s, j }) => VARS.test(String(s.env?.CHAT ?? j.env?.CHAT ?? d.env?.CHAT ?? ''))), true);
-  probe('ig-refresh.yml: CHAT не перевизначено в скрипті', sending.some(({ s }) => /(^|[\s;])CHAT=/.test(s.run)), false);
+  const sent = [];
+  for (const { s, j } of sending) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'diesel-sh-'));
+    try {
+      const bin = path.join(dir, 'bin'); mkdirSync(bin);
+      const logf = path.join(dir, 'curl.log').replace(/\\/g, '/');
+      // curl пише свої аргументи; refresh отримує порожню відповідь → гілка «не вдалося» → повідомлення
+      writeFileSync(path.join(bin, 'curl'), `#!/bin/bash\nprintf '%s\\n' "$*" >> '${logf}'\necho '{}'\n`);
+      writeFileSync(path.join(bin, 'jq'), '#!/bin/bash\ncat > /dev/null\n');
+      writeFileSync(path.join(bin, 'gh'), '#!/bin/bash\ncat > /dev/null\n');
+      const script = path.join(dir, 'step.sh');
+      writeFileSync(script, expr(s.run));
+      const env = { ...process.env, PATH: bin.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, l) => '/' + l.toLowerCase()) + ':' + process.env.PATH };
+      for (const e of [d.env, j.env, s.env]) for (const [k, v] of Object.entries(e ?? {})) env[k] = expr(v);
+      try { execFileSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', script.replace(/\\/g, '/')], { env, stdio: 'pipe' }); } catch {}
+      const log = existsSync(logf) ? readFileSync(logf, 'utf8') : '';
+      for (const l of log.split('\n').filter(l => l.includes('api.telegram.org'))) sent.push((l.match(/chat_id=(\S*)/) ?? [])[1] ?? '(без chat_id)');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+  probe('ig-refresh.yml: повідомлення справді надсилається (стенд не сліпий)', sent.length > 0, true);
+  probe('ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT', sent.filter(v => v !== VARS_CHAT), []);
 }
 {
   const gi = readFileSync(path.join(ROOT, '.gitignore'), 'utf8').split(/\r?\n/).map(s => s.trim());
@@ -152,6 +187,8 @@ console.log('КЛЮЧ GEMINI НЕ В АДРЕСІ (security п.9)');
     writeFileSync(hook, `
 import { appendFileSync } from 'node:fs';
 globalThis.fetch = async (url, opts = {}) => {
+  // fetch(new Request(...)) — теж законний виклик (вичитка Astra 28.09): беремо все з Request
+  if (url instanceof Request) opts = { method: url.method, headers: url.headers, body: await url.clone().text() }, url = url.url;
   appendFileSync(${JSON.stringify(path.join(root, 'req.jsonl').replace(/\\/g, '/'))},
     JSON.stringify({ url: String(url), method: opts.method, body: String(opts.body ?? ''),
       // Headers, масив пар чи обʼєкт — усе до одного вигляду (вичитка Astra 28.09)

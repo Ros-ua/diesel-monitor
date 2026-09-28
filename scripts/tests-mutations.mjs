@@ -1407,7 +1407,7 @@ const ПІДСАДКИ = [
 `,
     стало: `          CHAT: '-1001234567890' # CHAT: \${{ vars.TG_OWNER_CHAT }}
 `,
-    стереже: `ig-refresh.yml: CHAT — саме vars.TG_OWNER_CHAT у кроці відправки`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
     сюїта: 'tests-security.mjs',
   },
   {
@@ -1445,7 +1445,16 @@ const ПІДСАДКИ = [
     було: `          res=$(curl -s -G`,
     стало: `          CHAT=''
           res=$(curl -s -G`,
-    стереже: `ig-refresh.yml: CHAT не перевизначено в скрипті`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `ig-refresh: CHAT підмінено через read`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `          res=$(curl -s -G`,
+    стало: `          read -r CHAT <<< '-1001234567890'
+          res=$(curl -s -G`,
+    стереже: `ig-refresh.yml: КОЖНЕ повідомлення йде саме на vars.TG_OWNER_CHAT`,
     сюїта: 'tests-security.mjs',
   },
 ];
