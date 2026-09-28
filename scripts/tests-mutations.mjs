@@ -1337,6 +1337,41 @@ const ПІДСАДКИ = [
     стало: ``,
     стереже: `усі workflow мають явний permissions`,
     сюїта: 'tests-security.mjs',
+  },  {
+    імя: `write-all замість порожніх прав`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `permissions: {}
+`,
+    стало: `permissions: write-all
+`,
+    стереже: `ig-refresh.yml: явно без прав токена`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `reel-voice ходить не до Gemini`,
+    файл: `reel-voice.mjs`,
+    було: `\`https://generativelanguage.googleapis.com/v1beta/models/\${MODEL}:generateContent\``,
+    стало: `'https://example.invalid/tts'`,
+    стереже: `reel-voice: запит саме до Gemini TTS (адреса, метод, тіло)`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `розклад новин закоментовано`,
+    файл: `../.github/workflows/news.yml`,
+    було: `  schedule:
+`,
+    стало: `  # schedule:
+`,
+    стереже: `news.yml: не частіше разу на 3 години`,
+    сюїта: 'tests-security.mjs',
+  },
+  {
+    імя: `chat_id порожній`,
+    файл: `../.github/workflows/ig-refresh.yml`,
+    було: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)."`,
+    стало: `Токен Instagram не продовжився — потрібна ручна переавторизація (скажи Клоду «онови токен інстаграма»)." -d chat_id=""`,
+    стереже: `ig-refresh.yml: кожен chat_id — це "$CHAT"`,
+    сюїта: 'tests-security.mjs',
   },
 ];
 

@@ -34,7 +34,11 @@ function permsAt(lines, start, indent) {
     if (lead > indent) continue;
     const m = l.match(new RegExp(`^${pad}permissions:\\s*(.*)$`));
     if (!m) continue;
-    if (m[1].trim() === '{}') return {};
+    const inline = m[1].replace(/\s+#.*$/, '').trim();
+    if (inline === '{}') return {};
+    // ⚠️ Вичитка Astra 28.09: `permissions: write-all` читалось як «{}» — лишні права
+    // проходили пробу. Будь-яке значення в рядку, крім {}, повертаємо як є.
+    if (inline) return inline;
     const out = {};
     for (let j = i + 1; j < lines.length; j++) {
       const lj = lines[j];
@@ -64,7 +68,11 @@ function runsPerDay(text) {
     if (step) return Math.ceil(max / Number(step[1]));
     return field.split(',').length;
   };
-  return [...text.matchAll(/-\s*cron:\s*'([^']+)'/g)]
+  // ⚠️ Вичитка Astra 28.09: закоментований розклад рахувався як живий. Коментарі
+  // прибираємо, а без незакоментованого `schedule:` автоматичних запусків нуль.
+  const live = text.split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+  if (!/^\s+schedule:\s*$/m.test(live)) return 0;
+  return [...live.matchAll(/-\s*cron:\s*'([^']+)'/g)]
     .map(m => m[1].split(/\s+/))
     .filter(f => f[2] === '*' && f[4] === '*')
     .reduce((s, f) => s + count(f[0], 60) * count(f[1], 24), 0);
@@ -91,7 +99,14 @@ probe('notify.yml: явно без прав токена', topPerms(wf('notify.y
 console.log('');
 console.log('ДРІБНЕ (security п.10–11)');
 probe('ig-refresh.yml: chat_id не вписаний числом', /chat_id=\d/.test(wf('ig-refresh.yml')), false);
-probe('ig-refresh.yml: chat_id — з vars.TG_OWNER_CHAT', /vars\.TG_OWNER_CHAT/.test(wf('ig-refresh.yml')), true);
+{
+  // ⚠️ Вичитка Astra 28.09: проба бачила лише «немає цифри» і «є vars.TG_OWNER_CHAT»,
+  // а порожній chat_id="" проходив. Тепер: КОЖЕН chat_id — це $CHAT, а CHAT — із vars.
+  const t = wf('ig-refresh.yml');
+  const ids = [...t.matchAll(/chat_id=(\S+)/g)].map(m => m[1]);
+  probe('ig-refresh.yml: кожен chat_id — це "$CHAT"', [ids.length > 0, ids.every(v => v === '"$CHAT"')], [true, true]);
+  probe('ig-refresh.yml: CHAT — з vars.TG_OWNER_CHAT', /\bCHAT:\s*\$\{\{\s*vars\.TG_OWNER_CHAT\s*\}\}/.test(t), true);
+}
 {
   const gi = readFileSync(path.join(ROOT, '.gitignore'), 'utf8').split(/\r?\n/).map(s => s.trim());
   probe('.gitignore: .env і .env.* не потрапляють у репо', [gi.includes('.env'), gi.includes('.env.*')], [true, true]);
@@ -117,7 +132,7 @@ console.log('КЛЮЧ GEMINI НЕ В АДРЕСІ (security п.9)');
 import { writeFileSync } from 'node:fs';
 globalThis.fetch = async (url, opts = {}) => {
   writeFileSync(${JSON.stringify(path.join(root, 'req.json').replace(/\\/g, '/'))},
-    JSON.stringify({ url: String(url), headers: opts.headers ?? {} }));
+    JSON.stringify({ url: String(url), method: opts.method, body: String(opts.body ?? ''), headers: opts.headers ?? {} }));
   const audio = Buffer.alloc(4800).toString('base64');
   return { ok: true, status: 200, async text() { return ''; },
     async json() { return { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;rate=24000', data: audio } }] } }] }; } };
@@ -129,6 +144,11 @@ globalThis.fetch = async (url, opts = {}) => {
     } catch (e) { code = e.status ?? 1; }
     const req = existsSync(path.join(root, 'req.json')) ? JSON.parse(readFileSync(path.join(root, 'req.json'), 'utf8')) : null;
     probe('reel-voice: запит до Gemini справді пішов', [code, !!req], [0, true]);
+    // ⚠️ Вичитка Astra 28.09: заглушка приймала будь-яку адресу. Тепер — саме Gemini TTS.
+    probe('reel-voice: запит саме до Gemini TTS (адреса, метод, тіло)', req ? [
+      req.url === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',
+      req.method, JSON.parse(req.body || '{}').generationConfig?.responseModalities] : 'запиту немає',
+      [true, 'POST', ['AUDIO']]);
     probe('reel-voice: ключа немає в адресі запиту', req ? req.url.includes('SECRET-PROBE-KEY') : 'запиту немає', false);
     probe('reel-voice: ключ — у заголовку x-goog-api-key', req?.headers?.['x-goog-api-key'], 'SECRET-PROBE-KEY');
     probe('reel-voice: голос записано', existsSync(path.join(root, 'frames', 'voice.wav')), true);
