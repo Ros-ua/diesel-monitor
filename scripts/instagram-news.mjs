@@ -304,7 +304,8 @@ async function buildCard() {
   // новин немає — постимо корисний факт із наших даних
   if (!pick) {
     console.log(`ig-news: безпечних новин у напрямі тренду (${dir}) немає — постимо «де найдешевше»`);
-    const cheapFuel = pickFuelForCheapest(latest, state.lastFuel);
+    const now = new Date(); // один момент і для рішення, і для підпису (північ за Києвом)
+    const cheapFuel = pickFuelForCheapest(latest, state.lastFuel, now);
     if (!latest?.networks || !cheapFuel) {
       await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ skip: true }));
       return;
@@ -320,7 +321,7 @@ async function buildCard() {
       path.join(DATA_DIR, 'ig-news-pick.json'),
       JSON.stringify({
         kind: 'cheapest', fuel: cheapFuel, file: file0, url: `cheapest:${today0}:${cheapFuel}`,
-        caption: підписНайдешевшого(latest, cheapFuel),
+        caption: підписНайдешевшого(latest, cheapFuel, now),
       })
     );
     console.log(`ig-news: картка «де найдешевший ${FUEL_LABELS[cheapFuel]}» (${netCount(latest, cheapFuel)} мереж)`);

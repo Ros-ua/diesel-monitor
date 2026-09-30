@@ -56,8 +56,13 @@ export const previousDayLabel = (from: string, to: string): string =>
  * /tm/ не відповів і збирач лишив попередню карту. Без неї таблиця показувала
  * старі ціни мереж під сьогоднішньою шапкою (ревізія S4 30.09, P2-5). null — карта свіжа.
  */
-export const networksAsOfLabel = (date: string, networksDate?: string): string | null =>
-  networksDate && networksDate !== date ? `ціни мереж станом на ${fmtDateShort(networksDate)}` : null;
+export const networksAsOfLabel = (date: string, networksDate?: unknown): string | null => {
+  if (networksDate === undefined || networksDate === null) return null;
+  // дивне значення (не ISO) не валить сторінку і не видає «undefined» (Sol 30.09)
+  if (typeof networksDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(networksDate))
+    return 'дата карти мереж невідома';
+  return networksDate !== date ? `ціни мереж станом на ${fmtDateShort(networksDate)}` : null;
+};
 
 export const fmtDateTime = (iso: string): string => {
   const dt = new Date(iso);

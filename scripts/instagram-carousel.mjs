@@ -243,7 +243,7 @@ export function caption(latest) {
     regionLine +
     // ⚠️ Числа й перелік слайдів — з даних, а не жорсткі: при 4 областях слайда
     // областей немає, а підпис обіцяв його й казав «23 області» (Astra 26.09).
-    `Гортай карусель: усі види пального${networksAreFresh(latest) ? ', де дешевше' : ''}${областіСлайда(latest).length >= МІН_ОБЛАСТЕЙ_СЛАЙДА ? ', ціни по областях' : ''} і динаміка за місяць.\n\n` +
+    `Гортай карусель: усі види пального${cheap && networksAreFresh(latest) ? ', де дешевше' : ''}${областіСлайда(latest).length >= МІН_ОБЛАСТЕЙ_СЛАЙДА ? ', ціни по областях' : ''} і динаміка за місяць.\n\n` +
     `Повні дані по ${Object.keys(latest.networks ?? {}).length} мережах і ${Object.keys(latest.regionAvg ?? {}).length} областях — diesel-monitor.pp.ua (посилання в шапці профілю)\n\n` +
     pickHashtags({ fuel: 'dp', region, change: latest.avgChange?.dp })
   );

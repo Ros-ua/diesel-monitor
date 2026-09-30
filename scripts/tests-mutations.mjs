@@ -1235,6 +1235,8 @@ const ПІДСАДКИ = [
     стало: `        d1: пара ? changeFromShown(series, пара.from, series[series.length - 1]?.value ?? price) : null,`,
     стереже: `таблиця: «Вчора» від показаної ціни`,
     сюїта: 'tests-front.mjs',
+  },
+  {
     імя: `стара карта мереж вважається свіжою`,
     файл: `lib/networks-fresh.mjs`,
     було: `  return typeof nd === 'string' && ISO_DAY.test(nd) && nd === latest.date;`,
@@ -1290,7 +1292,7 @@ const ПІДСАДКИ = [
   {
     імя: `карусель обіцяє «де дешевше» і зі старою картою`,
     файл: `instagram-carousel.mjs`,
-    було: `усі види пального\${networksAreFresh(latest) ? ', де дешевше' : ''}\${`,
+    було: `усі види пального\${cheap && networksAreFresh(latest) ? ', де дешевше' : ''}\${`,
     стало: `усі види пального, де дешевше\${`,
     стереже: `S4: карусель зі старою картою — не обіцяє «де дешевше»`,
     сюїта: 'tests-parser.mjs',
@@ -1342,7 +1344,7 @@ const ПІДСАДКИ = [
   {
     імя: `підпис картки «де найдешевше» не зберігається з карткою`,
     файл: `instagram-news.mjs`,
-    було: `        caption: підписНайдешевшого(latest, cheapFuel),
+    було: `        caption: підписНайдешевшого(latest, cheapFuel, now),
 `,
     стало: ``,
     стереже: `S4 P2-2: картка «де найдешевше» — підпис у pick`,
@@ -1397,6 +1399,48 @@ const ПІДСАДКИ = [
 `,
     стало: ``,
     стереже: `мережі: таблиця показує позначку «станом на»`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `карусель обіцяє «де дешевше» без слайда мереж`,
+    файл: `instagram-carousel.mjs`,
+    було: `усі види пального\${cheap && networksAreFresh(latest) ? ', де дешевше' : ''}\${`,
+    стало: `усі види пального\${networksAreFresh(latest) ? ', де дешевше' : ''}\${`,
+    стереже: `S4 P3-2: без слайда мереж підпис не обіцяє «де дешевше»`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `«сьогодні» лише за календарем, без свіжості карти`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `  return networksAreFresh(latest) && latest?.date === kyivDate(now);`,
+    стало: `  return latest?.date === kyivDate(now);`,
+    стереже: `S4: стара карта — картки «де найдешевше» немає`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `publish будує підпис із нового latest в обхід captionForPublish`,
+    файл: `instagram-news.mjs`,
+    було: `  const caption = captionForPublish(pick, await readJson('latest.json'));`,
+    стало: `  const caption = pick.kind === 'cheapest' ? підписНайдешевшого(await readJson('latest.json'), pick.fuel) : підписНовини(pick, await readJson('latest.json'));`,
+    стереже: `S4 P2-2: publish шле в /media підпис картки, а не нового latest`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `позначка без дати в span`,
+    файл: `../src/components/NetworksTable.tsx`,
+    було: `<span className="text-danger"> · {станом}</span>`,
+    стало: `<span className="text-danger"> · </span>`,
+    стереже: `мережі: таблиця показує позначку «станом на»`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `позначка падає на числовій networksDate`,
+    файл: `../src/lib/format.ts`,
+    було: `  if (typeof networksDate !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(networksDate))
+    return 'дата карти мереж невідома';
+`,
+    стало: ``,
+    стереже: `мережі: networksDate числом — сторінка не падає`,
     сюїта: 'tests-front.mjs',
   },
   {
@@ -1633,8 +1677,11 @@ const ПІДСАДКИ = [
 
 function прогін(корінь, сюїта = 'tests-parser.mjs') {
   try {
+    // У копії немає node_modules: проба --card (ревізія S4 30.09, P2-2) бере
+    // справжні модулі звідси — посиланням, копія їх не отримує й не видаляє.
     const out = execFileSync(process.execPath, [path.join(корінь, 'scripts', сюїта)],
-      { encoding: 'utf8', stdio: 'pipe', timeout: 300000 });
+      { encoding: 'utf8', stdio: 'pipe', timeout: 300000,
+        env: { ...process.env, DM_NODE_MODULES: path.join(SCRIPTS, '..', 'node_modules') } });
     return { впало: false, текст: out };
   } catch (e) {
     return { впало: true, текст: String(e.stdout ?? '') + String(e.stderr ?? '') };

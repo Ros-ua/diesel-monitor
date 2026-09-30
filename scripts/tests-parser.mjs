@@ -31,11 +31,11 @@ const підписНовини = новиниIG.підписНовини ?? не
 // kyivDate потрібна й самій пробі (дата знімка для --card) — запасна рахує так само
 const kyivDate = свіжість.kyivDate ?? ((now = new Date()) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now));
-import { mkdtempSync, cpSync, mkdirSync, writeFileSync, rmSync, rmdirSync, unlinkSync, symlinkSync, lstatSync } from 'node:fs';
+import { mkdtempSync, cpSync, mkdirSync, writeFileSync, rmSync, rmdirSync, unlinkSync, symlinkSync, lstatSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { повернутиЗсув } from './lib/зсув-історії.mjs';
 import { записКоментаря, записДиректу, безНіків } from './lib/міст.mjs';
 import { текстГолосу } from './lib/голос.mjs';
@@ -1280,9 +1280,9 @@ console.log('S4: СТАРА КАРТА МЕРЕЖ НЕ «СЬОГОДНІ»');
   // «сьогодні» — за Києвом: 25.09 о 19:00 за Києвом
   const у25 = new Date('2026-09-25T16:00:00Z');
   проба('S4: свіжа карта — картка «де найдешевше» є', pickFuelForCheapest(свіжа, null, у25), 'dp');
-  проба('S4: стара карта — картки «де найдешевше» немає', pickFuelForCheapest(стара, null), null);
-  проба('S4: стара карта — підпис без «сьогодні»', підписНайдешевшого(стара, 'dp').includes('сьогодні'), false);
-  проба('S4: стара карта — підпис з датою карти', підписНайдешевшого(стара, 'dp').split('\n')[0], '⛽ Де найдешевший дизель (ціни мереж на 18.09)');
+  проба('S4: стара карта — картки «де найдешевше» немає', pickFuelForCheapest(стара, null, у25), null);
+  проба('S4: стара карта — підпис без «сьогодні»', підписНайдешевшого(стара, 'dp', у25).includes('сьогодні'), false);
+  проба('S4: стара карта — підпис з датою карти', підписНайдешевшого(стара, 'dp', у25).split('\n')[0], '⛽ Де найдешевший дизель (ціни мереж на 18.09)');
   проба('S4: свіжа карта — підпис як був', підписНайдешевшого(свіжа, 'dp', у25).split('\n')[0], '⛽ Де сьогодні найдешевший дизель');
   // ⚠️ Ревізія S4 30.09, P3-5: у проді ctx.date — ISO (frame() ріже по «-»);
   // з '25.09.2026' слайд малювався з «undefined.undefined», а проба мовчала.
@@ -1324,6 +1324,11 @@ console.log('S4, РЕВІЗІЯ 30.09: «СЬОГОДНІ» — ЛИШЕ ЗА С
   const tm = Object.fromEntries(Object.entries(мережі).map(([k, v]) => [k, { dp: v.dp }]));
   проба('S4: карта /tm/ без regionCount — картки немає (як у проді)', pickFuelForCheapest({ ...пятниця, networks: tm }, null, доПівночі), null);
   // P2-2: публікація бере підпис, зібраний разом із картинкою, а не з нового latest
+  // P3-2: карта свіжа, але жодна мережа не продає дизель — слайда мереж немає,
+  // і підпис каруселі не мусить обіцяти «де дешевше»
+  const безДизеля = { ...пятниця, networks: { A: { a95: 68 } } };
+  проба('S4 P3-2: без дизелю в мережах — слайда немає', slideCheapest(безДизеля, { date: '2026-09-25', no: 3, total: 5 }), null);
+  проба('S4 P3-2: без слайда мереж підпис не обіцяє «де дешевше»', підписКаруселі(безДизеля).includes('де дешевше'), false);
   const новий = { ...пятниця, avg: { dp: 70 } };
   проба('S4 P2-2: публікація бере підпис із pick, а не з нового latest',
     captionForPublish({ kind: 'cheapest', fuel: 'dp', caption: 'ПІДПИС КАРТИНКИ' }, новий), 'ПІДПИС КАРТИНКИ');
@@ -1340,9 +1345,19 @@ console.log('S4 P2-2: ПІДПИС ЗБИРАЄТЬСЯ РАЗОМ ІЗ КАРТ
   const модулі = path.join(корінь, 'node_modules');
   try {
     cpSync(скрипти, path.join(корінь, 'scripts'), { recursive: true });
-    symlinkSync(path.join(скрипти, '..', 'node_modules'), модулі, 'junction');
+    // node_modules — поруч зі scripts, а в копії стенду підсадок (там їх немає) —
+    // із DM_NODE_MODULES, який стенд передає. Не знайшли — проба червона, не мовчить.
+    const справжні = [path.join(скрипти, '..', 'node_modules'), process.env.DM_NODE_MODULES]
+      .find(p => p && existsSync(path.join(p, 'sharp')));
+    if (!справжні) throw new Error('немає node_modules зі sharp (ні поруч, ні в DM_NODE_MODULES)');
+    symlinkSync(справжні, модулі, 'junction');
     const дані = path.join(корінь, 'public', 'data');
     mkdirSync(дані, { recursive: true });
+    // прогін не на межі півночі за Києвом: інакше дата знімка і «сьогодні» скрипта розійдуться
+    const [г, х, с] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit',
+      second: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':').map(Number);
+    const доПівночі = (86400 - (г * 3600 + х * 60 + с)) * 1000;
+    if (доПівночі < 180000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, доПівночі + 2000);
     const день = kyivDate();
     const знімок = { date: день, networksDate: день, avg: { dp: 60, a95: 68 }, avgChange: { dp: 0.1 },
       networks: { A: { dp: 59.11, regionCount: 5 }, B: { dp: 60, regionCount: 5 }, C: { dp: 61, regionCount: 5 }, D: { dp: 62, regionCount: 5 } } };
@@ -1358,11 +1373,39 @@ console.log('S4 P2-2: ПІДПИС ЗБИРАЄТЬСЯ РАЗОМ ІЗ КАРТ
     запиши('news.json', { items: [] });
     const дешево = картка();
     проба('S4 P2-2: картка «де найдешевше» — підпис у pick', typeof дешево.caption === 'string' && дешево.caption.includes('59,11'), true);
+    // Публікація — справжній publish(), мережа підмінена гачком: між карткою і
+    // публікацією приїхав новий latest (70 грн) — у /media мусить піти підпис картки.
+    const гачок = path.join(корінь, 'fetch-hook.mjs');
+    const журнал = path.join(корінь, 'fetch-log.jsonl');
+    writeFileSync(гачок, [
+      "import { appendFileSync } from 'node:fs';",
+      'globalThis.fetch = async (url, init = {}) => {',
+      '  const u = String(url);',
+      '  appendFileSync(process.env.DM_FETCH_LOG, JSON.stringify({ u: u.replace(/access_token=[^&]*/, "access_token=*"), body: init.body ?? null }) + "\\n");',
+      "  const body = u.includes('/me?') ? { id: '1', username: 'probe' }",
+      "    : u.includes('/media_publish') ? { id: 'p1' }",
+      "    : u.includes('fields=status_code') ? { status_code: 'FINISHED' }",
+      "    : u.includes('/media') ? { id: 'c1' } : {};",
+      "  return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });",
+      '};',
+    ].join('\n'));
+    запиши('latest.json', { ...знімок, avg: { dp: 70, a95: 78 },
+      networks: Object.fromEntries(Object.entries(знімок.networks).map(([k, v]) => [k, { ...v, dp: v.dp + 10 }])) });
+    execFileSync(process.execPath, ['--import', pathToFileURL(гачок).href, path.join(корінь, 'scripts', 'instagram-news.mjs')],
+      { cwd: корінь, stdio: 'pipe', env: { ...process.env, INSTAGRAM_TOKEN: 'probe-token', DM_FETCH_LOG: журнал } });
+    const запити = readFileSync(журнал, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    const медіа = запити.find(з => з.u.includes('/media') && !з.u.includes('/media_publish') && з.body);
+    проба('S4 P2-2: publish шле в /media підпис картки, а не нового latest',
+      медіа ? JSON.parse(медіа.body).caption === дешево.caption : 'запиту /media немає', true);
+    проба('S4 P2-2: гачок — жодного запиту поза підміною', запити.every(з => з.u.startsWith('https://graph.instagram.com/')), true);
+    запиши('latest.json', знімок);
     запиши('news.json', { items: [{ title: 'Ціни на пальне зросли', url: 'https://example.com/n1', impact: 'up',
       publishedAt: new Date().toISOString(), source: 'УНІАН', summary: 'Середня ціна пального зросла за тиждень.' }] });
     const новина = картка();
     const f = v => v.toFixed(2).replace('.', ',');
-    проба('S4 P2-2: новина — підпис у pick', typeof новина.caption === 'string' && новина.caption.includes(f(знімок.avg[новина.fuel] ?? знімок.avg.dp)), true);
+    проба('S4 P2-2: новина — обрано саме новину, а не «де найдешевше»', [новина.kind ?? 'news', новина.url], ['news', 'https://example.com/n1']);
+    проба('S4 P2-2: новина — підпис у pick', typeof новина.caption === 'string' && новина.caption.includes(f(знімок.avg[новина.fuel] ?? знімок.avg.dp))
+      && новина.caption.includes('Ціни на пальне зросли') && новина.caption.includes('Джерело: УНІАН'), true);
   } catch (e) {
     проба('S4 P2-2: --card на копії відпрацював', 'ВИКИД: ' + String(e.message).slice(0, 200), 'ok');
   } finally {
