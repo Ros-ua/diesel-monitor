@@ -1387,8 +1387,8 @@ const ПІДСАДКИ = [
   {
     імя: `сайт мовчить про стару карту мереж`,
     файл: `../src/lib/format.ts`,
-    було: `  networksDate && networksDate !== date ? `,
-    стало: `  false ? `,
+    було: `  return networksDate !== date ? `,
+    стало: `  return false ? `,
     стереже: `мережі: стара карта — позначка «станом на»`,
     сюїта: 'tests-front.mjs',
   },
@@ -1431,6 +1431,24 @@ const ПІДСАДКИ = [
     було: `<span className="text-danger"> · {станом}</span>`,
     стало: `<span className="text-danger"> · </span>`,
     стереже: `мережі: таблиця показує позначку «станом на»`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `publish новини будує підпис із нового latest`,
+    файл: `instagram-news.mjs`,
+    було: `  const caption = captionForPublish(pick, await readJson('latest.json'));`,
+    стало: `  const caption = pick.kind === 'cheapest' ? captionForPublish(pick, await readJson('latest.json')) : підписНовини(pick, await readJson('latest.json'));`,
+    стереже: `S4 P2-2: publish новини шле в /media підпис картки`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `позначка приймає неіснуючу дату`,
+    файл: `../src/lib/format.ts`,
+    було: `  if (Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
+    return 'дата карти мереж невідома';
+`,
+    стало: ``,
+    стереже: `мережі: неіснуючий місяць — без «undefined»`,
     сюїта: 'tests-front.mjs',
   },
   {

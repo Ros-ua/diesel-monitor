@@ -61,6 +61,10 @@ export const networksAsOfLabel = (date: string, networksDate?: unknown): string 
   // дивне значення (не ISO) не валить сторінку і не видає «undefined» (Sol 30.09)
   if (typeof networksDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(networksDate))
     return 'дата карти мереж невідома';
+  // і справжня календарна дата: «2026-13-25» давало «25 undefined» (Sol 30.09, другий захід)
+  const день = new Date(networksDate + 'T00:00:00Z');
+  if (Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
+    return 'дата карти мереж невідома';
   return networksDate !== date ? `ціни мереж станом на ${fmtDateShort(networksDate)}` : null;
 };
 

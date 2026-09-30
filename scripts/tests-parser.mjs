@@ -1389,16 +1389,22 @@ console.log('S4 P2-2: ПІДПИС ЗБИРАЄТЬСЯ РАЗОМ ІЗ КАРТ
       "  return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });",
       '};',
     ].join('\n'));
-    запиши('latest.json', { ...знімок, avg: { dp: 70, a95: 78 },
-      networks: Object.fromEntries(Object.entries(знімок.networks).map(([k, v]) => [k, { ...v, dp: v.dp + 10 }])) });
-    execFileSync(process.execPath, ['--import', pathToFileURL(гачок).href, path.join(корінь, 'scripts', 'instagram-news.mjs')],
-      { cwd: корінь, stdio: 'pipe', env: { ...process.env, INSTAGRAM_TOKEN: 'probe-token', DM_FETCH_LOG: журнал } });
-    const запити = readFileSync(журнал, 'utf8').trim().split('\n').map(l => JSON.parse(l));
-    const медіа = запити.find(з => з.u.includes('/media') && !з.u.includes('/media_publish') && з.body);
-    проба('S4 P2-2: publish шле в /media підпис картки, а не нового latest',
-      медіа ? JSON.parse(медіа.body).caption === дешево.caption : 'запиту /media немає', true);
-    проба('S4 P2-2: гачок — жодного запиту поза підміною', запити.every(з => з.u.startsWith('https://graph.instagram.com/')), true);
-    запиши('latest.json', знімок);
+    const новийЗнімок = { ...знімок, avg: { dp: 70, a95: 78, a95p: 80, a92: 66, gas: 40 },
+      networks: Object.fromEntries(Object.entries(знімок.networks).map(([k, v]) => [k, { ...v, dp: v.dp + 10 }])) };
+    // публікація з новим latest; повертає підпис, що пішов у /media, і всі запити
+    const опублікувати = () => {
+      writeFileSync(журнал, '');
+      запиши('latest.json', новийЗнімок);
+      execFileSync(process.execPath, ['--import', pathToFileURL(гачок).href, path.join(корінь, 'scripts', 'instagram-news.mjs')],
+        { cwd: корінь, stdio: 'pipe', env: { ...process.env, INSTAGRAM_TOKEN: 'probe-token', DM_FETCH_LOG: журнал } });
+      запиши('latest.json', знімок);
+      const запити = readFileSync(журнал, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+      const медіа = запити.find(з => з.u.includes('/media') && !з.u.includes('/media_publish') && з.body);
+      return { підпис: медіа ? JSON.parse(медіа.body).caption : 'запиту /media немає', запити };
+    };
+    const пДешево = опублікувати();
+    проба('S4 P2-2: publish шле в /media підпис картки, а не нового latest', пДешево.підпис === дешево.caption, true);
+    проба('S4 P2-2: гачок — жодного запиту поза підміною', пДешево.запити.every(з => з.u.startsWith('https://graph.instagram.com/')), true);
     запиши('news.json', { items: [{ title: 'Ціни на пальне зросли', url: 'https://example.com/n1', impact: 'up',
       publishedAt: new Date().toISOString(), source: 'УНІАН', summary: 'Середня ціна пального зросла за тиждень.' }] });
     const новина = картка();
@@ -1406,6 +1412,9 @@ console.log('S4 P2-2: ПІДПИС ЗБИРАЄТЬСЯ РАЗОМ ІЗ КАРТ
     проба('S4 P2-2: новина — обрано саме новину, а не «де найдешевше»', [новина.kind ?? 'news', новина.url], ['news', 'https://example.com/n1']);
     проба('S4 P2-2: новина — підпис у pick', typeof новина.caption === 'string' && новина.caption.includes(f(знімок.avg[новина.fuel] ?? знімок.avg.dp))
       && новина.caption.includes('Ціни на пальне зросли') && новина.caption.includes('Джерело: УНІАН'), true);
+    // публікація новини — теж із підписом картки, а не з нового latest (Sol, другий захід)
+    const пНовина = опублікувати();
+    проба('S4 P2-2: publish новини шле в /media підпис картки', пНовина.підпис === новина.caption, true);
   } catch (e) {
     проба('S4 P2-2: --card на копії відпрацював', 'ВИКИД: ' + String(e.message).slice(0, 200), 'ok');
   } finally {
