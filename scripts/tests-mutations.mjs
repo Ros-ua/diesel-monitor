@@ -1444,7 +1444,7 @@ const ПІДСАДКИ = [
   {
     імя: `позначка приймає неіснуючу дату`,
     файл: `../src/lib/format.ts`,
-    було: `  if (typeof networksDate !== 'string' || Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
+    було: `  if (Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
     return 'дата карти мереж невідома';
 `,
     стало: ``,
@@ -1452,13 +1452,12 @@ const ПІДСАДКИ = [
     сюїта: 'tests-front.mjs',
   },
   {
-    імя: `позначка падає на числовій networksDate`,
+    імя: `позначка падає на об'єкті замість дати`,
     файл: `../src/lib/format.ts`,
-    було: `  if (typeof networksDate !== 'string' || Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
-    return 'дата карти мереж невідома';
+    було: `  if (typeof networksDate !== 'string') return 'дата карти мереж невідома';
 `,
     стало: ``,
-    стереже: `мережі: networksDate числом — сторінка не падає`,
+    стереже: `мережі: networksDate об'єктом — сторінка не падає`,
     сюїта: 'tests-front.mjs',
   },
   {

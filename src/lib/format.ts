@@ -58,11 +58,12 @@ export const previousDayLabel = (from: string, to: string): string =>
  */
 export const networksAsOfLabel = (date: string, networksDate?: unknown): string | null => {
   if (networksDate === undefined || networksDate === null) return null;
-  // Лише справжня календарна дата 'YYYY-MM-DD'. Число, «garbage», «2026-13-25»,
+  // Лише справжня календарна дата 'YYYY-MM-DD'. Число, об'єкт, «garbage», «2026-13-25»,
   // «2026-02-30» — «невідома», а не падіння сторінки чи «25 undefined» (Sol 30.09).
-  // typeof — для звуження типу; саму перевірку робить порівняння з toISOString.
-  const день = new Date(`${String(networksDate)}T00:00:00Z`);
-  if (typeof networksDate !== 'string' || Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
+  // Спершу тип: об'єкт без toString падав при перетворенні на рядок (Sol, 4-й захід).
+  if (typeof networksDate !== 'string') return 'дата карти мереж невідома';
+  const день = new Date(`${networksDate}T00:00:00Z`);
+  if (Number.isNaN(день.getTime()) || день.toISOString().slice(0, 10) !== networksDate)
     return 'дата карти мереж невідома';
   return networksDate !== date ? `ціни мереж станом на ${fmtDateShort(networksDate)}` : null;
 };
