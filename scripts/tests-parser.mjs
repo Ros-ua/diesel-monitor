@@ -18,7 +18,24 @@ import { звіритиДжерела, викидиМереж } from './lib/зв
 import { standout, крайняОбласть } from './lib/hashtags.mjs';
 import { caption as підписКаруселі } from './instagram-carousel.mjs';
 import { підписНайдешевшого, pickFuelForCheapest } from './instagram-news.mjs';
-import { networksAreFresh } from './lib/networks-fresh.mjs';
+import { networksAreFresh, shortDate } from './lib/networks-fresh.mjs';
+// ⚠️ Функції ревізії S4 30.09 — через * з заглушкою: на старому коді їх немає,
+// і статичний імпорт валив би ВЕСЬ набір до першої проби (слабке «впало все»).
+// Із заглушкою червоніє саме та проба, що стереже (§4а).
+import * as свіжість from './lib/networks-fresh.mjs';
+import * as новиниIG from './instagram-news.mjs';
+const нема = () => 'НЕМА ФУНКЦІЇ';
+const networksAreToday = свіжість.networksAreToday ?? нема;
+const captionForPublish = новиниIG.captionForPublish ?? нема;
+const підписНовини = новиниIG.підписНовини ?? нема;
+// kyivDate потрібна й самій пробі (дата знімка для --card) — запасна рахує так само
+const kyivDate = свіжість.kyivDate ?? ((now = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now));
+import { mkdtempSync, cpSync, mkdirSync, writeFileSync, rmSync, rmdirSync, unlinkSync, symlinkSync, lstatSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { повернутиЗсув } from './lib/зсув-історії.mjs';
 import { записКоментаря, записДиректу, безНіків } from './lib/міст.mjs';
 import { текстГолосу } from './lib/голос.mjs';
@@ -1260,18 +1277,103 @@ console.log('S4: СТАРА КАРТА МЕРЕЖ НЕ «СЬОГОДНІ»');
   const безДати = { ...свіжа, networksDate: undefined };
   проба('S4: карта без networksDate — свіжа', networksAreFresh(безДати), true);
   проба('S4: networksDate старша за date — не свіжа', networksAreFresh(стара), false);
-  проба('S4: свіжа карта — картка «де найдешевше» є', pickFuelForCheapest(свіжа, null), 'dp');
+  // «сьогодні» — за Києвом: 25.09 о 19:00 за Києвом
+  const у25 = new Date('2026-09-25T16:00:00Z');
+  проба('S4: свіжа карта — картка «де найдешевше» є', pickFuelForCheapest(свіжа, null, у25), 'dp');
   проба('S4: стара карта — картки «де найдешевше» немає', pickFuelForCheapest(стара, null), null);
   проба('S4: стара карта — підпис без «сьогодні»', підписНайдешевшого(стара, 'dp').includes('сьогодні'), false);
   проба('S4: стара карта — підпис з датою карти', підписНайдешевшого(стара, 'dp').split('\n')[0], '⛽ Де найдешевший дизель (ціни мереж на 18.09)');
-  проба('S4: свіжа карта — підпис як був', підписНайдешевшого(свіжа, 'dp').split('\n')[0], '⛽ Де сьогодні найдешевший дизель');
-  const ctx = { date: '25.09.2026', no: 3, total: 5 };
+  проба('S4: свіжа карта — підпис як був', підписНайдешевшого(свіжа, 'dp', у25).split('\n')[0], '⛽ Де сьогодні найдешевший дизель');
+  // ⚠️ Ревізія S4 30.09, P3-5: у проді ctx.date — ISO (frame() ріже по «-»);
+  // з '25.09.2026' слайд малювався з «undefined.undefined», а проба мовчала.
+  const ctx = { date: '2026-09-25', no: 3, total: 5 };
+  проба('S4: слайд мереж — дата без «undefined»', String(slideCheapest(свіжа, ctx)).includes('undefined'), false);
   проба('S4: стара карта — слайда мереж немає', slideCheapest(стара, ctx), null);
   проба('S4: свіжа карта — слайд мереж є', typeof slideCheapest(свіжа, ctx), 'string');
   const пс = підписКаруселі(стара);
   проба('S4: карусель зі старою картою — без «Найдешевша мережа»', пс.includes('Найдешевша мережа'), false);
   проба('S4: карусель зі старою картою — не обіцяє «де дешевше»', пс.includes('де дешевше'), false);
   проба('S4: карусель зі свіжою картою — «Найдешевша мережа» є', підписКаруселі(свіжа).includes('Найдешевша мережа: A'), true);
+}
+
+console.log('');
+console.log('S4, РЕВІЗІЯ 30.09: «СЬОГОДНІ» — ЛИШЕ ЗА СЬОГОДНІ ЗА КИЄВОМ');
+{
+  const мережі = { A: { dp: 59, regionCount: 5 }, B: { dp: 60, regionCount: 5 }, C: { dp: 61, regionCount: 5 }, D: { dp: 62, regionCount: 5 } };
+  const пятниця = { date: '2026-09-25', networksDate: '2026-09-25', avg: { dp: 60 }, networks: мережі };
+  const неділя = new Date('2026-09-27T16:00:00Z');
+  const заПівніч = new Date('2026-09-25T21:31:00Z');   // 00:31 за Києвом уже 26.09 (замір 28.09)
+  const доПівночі = new Date('2026-09-25T20:59:00Z');  // 23:59 за Києвом ще 25.09
+  проба('S4: у неділю з цінами за 25.09 — картки немає', pickFuelForCheapest(пятниця, null, неділя), null);
+  проба('S4: у неділю — підпис без «сьогодні» і з датою даних',
+    підписНайдешевшого(пятниця, 'dp', неділя).split('\n')[0], '⛽ Де найдешевший дизель (ціни мереж на 25.09)');
+  проба('S4: крон після півночі за Києвом — картки немає', pickFuelForCheapest(пятниця, null, заПівніч), null);
+  проба('S4: до півночі за Києвом — картка є', pickFuelForCheapest(пятниця, null, доПівночі), 'dp');
+  проба('S4: kyivDate — дата за Києвом, не UTC', kyivDate(заПівніч), '2026-09-26');
+  проба('S4: networksAreToday — сьогодні за Києвом', networksAreToday(пятниця, доПівночі), true);
+  // P2-4: типовий випадок S4 — карта на ОДИН день старша
+  проба('S4: networksDate на день старша — не свіжа', networksAreFresh({ ...пятниця, networksDate: '2026-09-24' }), false);
+  // P3-1: дивне значення — не свіжа карта, і підпис не падає
+  проба('S4: порожня networksDate — не свіжа', networksAreFresh({ ...пятниця, networksDate: '' }), false);
+  проба('S4: networksDate не ISO — не свіжа', networksAreFresh({ ...пятниця, networksDate: '2026-9-25' }), false);
+  проба('S4: networksDate числом — не свіжа', networksAreFresh({ ...пятниця, networksDate: 20260925 }), false);
+  проба('S4: shortDate від числа не падає',
+    (() => { try { return shortDate(20260925); } catch (e) { return 'ВИКИД: ' + e.message; } })(), '');
+  // P2-1: боєва форма карти /tm/ — без regionCount; картка «де найдешевше» на ній
+  // не збирається (замір: жодної такої версії latest.json з 29.07). Фіксуємо як є.
+  const tm = Object.fromEntries(Object.entries(мережі).map(([k, v]) => [k, { dp: v.dp }]));
+  проба('S4: карта /tm/ без regionCount — картки немає (як у проді)', pickFuelForCheapest({ ...пятниця, networks: tm }, null, доПівночі), null);
+  // P2-2: публікація бере підпис, зібраний разом із картинкою, а не з нового latest
+  const новий = { ...пятниця, avg: { dp: 70 } };
+  проба('S4 P2-2: публікація бере підпис із pick, а не з нового latest',
+    captionForPublish({ kind: 'cheapest', fuel: 'dp', caption: 'ПІДПИС КАРТИНКИ' }, новий), 'ПІДПИС КАРТИНКИ');
+  проба('S4 P2-2: старий pick без підпису — підпис як раніше',
+    captionForPublish({ kind: 'news', title: 'T', source: 'S', fuel: 'dp' }, новий),
+    підписНовини({ kind: 'news', title: 'T', source: 'S', fuel: 'dp' }, новий));
+}
+
+console.log('');
+console.log('S4 P2-2: ПІДПИС ЗБИРАЄТЬСЯ РАЗОМ ІЗ КАРТКОЮ (справжній --card на копії)');
+{
+  const скрипти = path.dirname(fileURLToPath(import.meta.url));
+  const корінь = mkdtempSync(path.join(tmpdir(), `dm-card-${process.pid}-`));
+  const модулі = path.join(корінь, 'node_modules');
+  try {
+    cpSync(скрипти, path.join(корінь, 'scripts'), { recursive: true });
+    symlinkSync(path.join(скрипти, '..', 'node_modules'), модулі, 'junction');
+    const дані = path.join(корінь, 'public', 'data');
+    mkdirSync(дані, { recursive: true });
+    const день = kyivDate();
+    const знімок = { date: день, networksDate: день, avg: { dp: 60, a95: 68 }, avgChange: { dp: 0.1 },
+      networks: { A: { dp: 59.11, regionCount: 5 }, B: { dp: 60, regionCount: 5 }, C: { dp: 61, regionCount: 5 }, D: { dp: 62, regionCount: 5 } } };
+    const запиши = (ім, v) => writeFileSync(path.join(дані, ім), JSON.stringify(v));
+    const картка = () => {
+      execFileSync(process.execPath, [path.join(корінь, 'scripts', 'instagram-news.mjs'), '--card'],
+        { cwd: корінь, stdio: 'pipe', env: { ...process.env, INSTAGRAM_TOKEN: '' } });
+      return JSON.parse(readFileSync(path.join(дані, 'ig-news-pick.json'), 'utf8'));
+    };
+    запиши('latest.json', знімок);
+    запиши('history.json', { days: [] });
+    запиши('ig-news-posted.json', { urls: [] });
+    запиши('news.json', { items: [] });
+    const дешево = картка();
+    проба('S4 P2-2: картка «де найдешевше» — підпис у pick', typeof дешево.caption === 'string' && дешево.caption.includes('59,11'), true);
+    запиши('news.json', { items: [{ title: 'Ціни на пальне зросли', url: 'https://example.com/n1', impact: 'up',
+      publishedAt: new Date().toISOString(), source: 'УНІАН', summary: 'Середня ціна пального зросла за тиждень.' }] });
+    const новина = картка();
+    const f = v => v.toFixed(2).replace('.', ',');
+    проба('S4 P2-2: новина — підпис у pick', typeof новина.caption === 'string' && новина.caption.includes(f(знімок.avg[новина.fuel] ?? знімок.avg.dp)), true);
+  } catch (e) {
+    проба('S4 P2-2: --card на копії відпрацював', 'ВИКИД: ' + String(e.message).slice(0, 200), 'ok');
+  } finally {
+    // ⚠️ Спершу — посилання на справжні node_modules, і лише потім тимчасову теку:
+    // rmSync не мусить піти всередину бойових модулів.
+    try { rmdirSync(модулі); } catch { try { unlinkSync(модулі); } catch { /* немає */ } }
+    let лишилось = true;
+    try { lstatSync(модулі); } catch { лишилось = false; }
+    if (!лишилось) rmSync(корінь, { recursive: true, force: true });
+    else console.log(`  ⚠️ посилання ${модулі} не знято — теку лишено`);
+  }
 }
 
 console.log('');

@@ -51,6 +51,14 @@ export const previousDayLabel = (from: string, to: string): string =>
     ? 'Вчора'
     : `з ${fmtDateShort(from)}`;
 
+/**
+ * Позначка над таблицею мереж, коли карта мереж старша за дані (networksDate ≠ date):
+ * /tm/ не відповів і збирач лишив попередню карту. Без неї таблиця показувала
+ * старі ціни мереж під сьогоднішньою шапкою (ревізія S4 30.09, P2-5). null — карта свіжа.
+ */
+export const networksAsOfLabel = (date: string, networksDate?: string): string | null =>
+  networksDate && networksDate !== date ? `ціни мереж станом на ${fmtDateShort(networksDate)}` : null;
+
 export const fmtDateTime = (iso: string): string => {
   const dt = new Date(iso);
   return `${dt.toLocaleDateString('uk-UA')} ${dt.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`;

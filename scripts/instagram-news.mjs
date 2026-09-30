@@ -12,7 +12,7 @@ import path from 'node:path';
 import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 import { pickHashtags, standout, крайняОбласть } from './lib/hashtags.mjs';
 import { fileURLToPath } from 'node:url';
-import { networksAreFresh, shortDate } from './lib/networks-fresh.mjs';
+import { networksAreFresh, networksAreToday, shortDate } from './lib/networks-fresh.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
@@ -88,9 +88,11 @@ function netCount(latest, fuel) {
     .filter(v => v?.[fuel] !== undefined && (v.regionCount ?? 0) >= 3).length;
 }
 
-export function pickFuelForCheapest(latest, lastFuel) {
-  // стара карта мереж — картки «де сьогодні найдешевше» не буде
-  if (!networksAreFresh(latest)) return null;
+export function pickFuelForCheapest(latest, lastFuel, now = new Date()) {
+  // На картці жорстко «Де сьогодні»: картку будуємо лише тоді, коли і дані, і
+  // карта мереж — за сьогодні за Києвом. Стара карта, вихідні з п'ятничними
+  // цінами, крон після півночі — картки немає (ревізія S4 30.09, P1-1).
+  if (!networksAreToday(latest, now)) return null;
   const rich = Object.keys(FUEL_LABELS).filter(k => netCount(latest, k) >= 4);
   if (!rich.length) return null;
   return rich.find(k => k !== lastFuel) ?? rich[0];
@@ -313,9 +315,13 @@ async function buildCard() {
     const file0 = `cheap-${today0}.jpg`;
     await mkdir(CARDS_DIR, { recursive: true });
     await writeFile(path.join(CARDS_DIR, file0), jpg0);
+    // підпис — з того самого знімка, що й картинка (P2-2, див. captionForPublish)
     await writeFile(
       path.join(DATA_DIR, 'ig-news-pick.json'),
-      JSON.stringify({ kind: 'cheapest', fuel: cheapFuel, file: file0, url: `cheapest:${today0}:${cheapFuel}` })
+      JSON.stringify({
+        kind: 'cheapest', fuel: cheapFuel, file: file0, url: `cheapest:${today0}:${cheapFuel}`,
+        caption: підписНайдешевшого(latest, cheapFuel),
+      })
     );
     console.log(`ig-news: картка «де найдешевший ${FUEL_LABELS[cheapFuel]}» (${netCount(latest, cheapFuel)} мереж)`);
     return;
@@ -327,7 +333,11 @@ async function buildCard() {
   const file = `news-${today}.jpg`;
   await mkdir(CARDS_DIR, { recursive: true });
   await writeFile(path.join(CARDS_DIR, file), jpg);
-  await writeFile(path.join(DATA_DIR, 'ig-news-pick.json'), JSON.stringify({ ...pick, file, fuel }));
+  // підпис — з того самого знімка latest, що й цифри на картинці (P2-2)
+  await writeFile(
+    path.join(DATA_DIR, 'ig-news-pick.json'),
+    JSON.stringify({ ...pick, file, fuel, caption: підписНовини({ ...pick, fuel }, latest) })
+  );
   console.log(`ig-news: пальне в блоці — ${FUEL_LABELS[fuel] ?? '—'} (минулого разу ${FUEL_LABELS[state.lastFuel] ?? '—'})`);
 
   // прибираємо і news-, і cheap-: раніше фільтр ловив лише news-,
@@ -363,7 +373,7 @@ export function підписЗміни(ch, f) {
   return ch > 0 ? ` (за добу +${f(ch)})` : ` (за добу −${f(Math.abs(ch))})`;
 }
 
-export function підписНайдешевшого(latest, fuel) {
+export function підписНайдешевшого(latest, fuel, now = new Date()) {
   const f = v => v.toFixed(2).replace('.', ',');
   const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
   const label = FUEL_LABELS[fuel] ?? 'Пальне';
@@ -375,10 +385,12 @@ export function підписНайдешевшого(latest, fuel) {
   const виділена = крайняОбласть(latest?.regionAvg, fuel);
   const region = standout(latest?.regionAvg, fuel)?.name ?? null;   // для хештега
   const якаОбласть = виділена?.дешевша ? 'Дешевше за все' : 'Дорожче за все';
-  // ⚠️ Карта мереж старша за дату даних — не «сьогодні», а чесна дата карти.
-  const header = networksAreFresh(latest)
+  // ⚠️ «Сьогодні» — лише коли дані й карта за сьогодні за Києвом. Інакше чесна
+  // дата: карти мереж, коли вона старша за дані, або самих даних (вихідні).
+  const коли = shortDate(networksAreFresh(latest) ? latest?.date : latest?.networksDate);
+  const header = networksAreToday(latest, now)
     ? `⛽ Де сьогодні найдешевший ${label.toLowerCase()}`
-    : `⛽ Де найдешевший ${label.toLowerCase()} (ціни мереж на ${shortDate(latest.networksDate)})`;
+    : `⛽ Де найдешевший ${label.toLowerCase()}` + (коли ? ` (ціни мереж на ${коли})` : ' (карта мереж не свіжа)');
   return (
     `${header}\n\n` +
     top.map((r, i) => `${i + 1}. ${r.name} — ${f(r.price)} грн/л`).join('\n') +
@@ -407,44 +419,7 @@ async function publish() {
   const me = await fetch(`${API}/me?fields=id,username&access_token=${token}`).then(r => r.json());
   if (!me.id) throw new Error(`me: ${JSON.stringify(me)}`);
 
-  const latest = await readJson('latest.json');
-  const f = v => v.toFixed(2).replace('.', ',');
-
-  const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
-  let caption;
-
-  if (pick.kind === 'cheapest') {
-    // картка «де найдешевше» — коли безпечних новин не знайшлося
-    caption = підписНайдешевшого(latest, pick.fuel);
-  } else {
-    const up = pick.impact !== 'down';
-
-    // привʼязуємо новину до наших цифр: головним — те пальне, що на картці
-    let facts = '';
-    const fuel = pick.fuel && latest?.avg?.[pick.fuel] !== undefined ? pick.fuel : 'dp';
-    if (latest?.avg?.[fuel] !== undefined) {
-      const ch = latest.avgChange?.[fuel];
-      const chTxt = підписЗміни(ch, f);
-      const others = Object.entries(FUEL_LABELS)
-        .filter(([k]) => k !== fuel && latest.avg[k] !== undefined)
-        .slice(0, 3)
-        .map(([k, label]) => `${label} ${f(latest.avg[k])}`)
-        .join(' · ');
-      facts =
-        `📊 Що зараз в Україні:\n` +
-        `${FUEL_LABELS[fuel]} ${f(latest.avg[fuel])} грн/л${chTxt}\n` +
-        (others ? `${others}\n` : '') +
-        `\n`;
-    }
-
-    caption =
-      `${up ? '🔺' : '🟢'} ${pick.title}\n\n` +
-      (pick.summary ? `${pick.summary.slice(0, 300).replace(/\s+\S*$/, '')}…\n\n` : '') +
-      facts +
-      `Джерело: ${pick.source}\n\n` +
-      `Ціни по всіх мережах АЗС і областях — ${SITE_LINE}\n\n` +
-      pickHashtags({ fuel, news: true });
-  }
+  const caption = captionForPublish(pick, await readJson('latest.json'));
 
   const create = await fetch(`${API}/${me.id}/media`, {
     method: 'POST',
@@ -471,7 +446,55 @@ async function publish() {
       updated: new Date().toISOString(),
     })
   );
-  console.log(`ig-news: опубліковано «${pick.title.slice(0, 60)}» (media ${pub.id})`);
+  // у картки «де найдешевше» заголовка новини немає — лог не мусить падати після посту
+  console.log(`ig-news: опубліковано «${String(pick.title ?? pick.url).slice(0, 60)}» (media ${pub.id})`);
+}
+
+/**
+ * Підпис до публікації — той, що зібрали РАЗОМ із картинкою (pick.caption).
+ *
+ * ⚠️ Ревізія S4 30.09, P2-2: між збіркою картки і публікацією крок «Коміт
+ * картки» робить git pull, і свіжий latest.json від збору цін міг приїхати
+ * посередині: картинка з одного знімка, цифри в підписі — з іншого. Старий
+ * ig-news-pick.json без caption (зібраний до цієї правки) — підпис як раніше.
+ */
+export function captionForPublish(pick, latest) {
+  if (typeof pick?.caption === 'string' && pick.caption) return pick.caption;
+  return pick?.kind === 'cheapest' ? підписНайдешевшого(latest, pick.fuel) : підписНовини(pick, latest);
+}
+
+/** Підпис до поста-новини: заголовок, уривок, наші цифри з latest і джерело. */
+export function підписНовини(pick, latest) {
+  const f = v => v.toFixed(2).replace('.', ',');
+  const SITE_LINE = 'diesel-monitor.pp.ua (посилання в шапці профілю)';
+  const up = pick.impact !== 'down';
+
+  // привʼязуємо новину до наших цифр: головним — те пальне, що на картці
+  let facts = '';
+  const fuel = pick.fuel && latest?.avg?.[pick.fuel] !== undefined ? pick.fuel : 'dp';
+  if (latest?.avg?.[fuel] !== undefined) {
+    const ch = latest.avgChange?.[fuel];
+    const chTxt = підписЗміни(ch, f);
+    const others = Object.entries(FUEL_LABELS)
+      .filter(([k]) => k !== fuel && latest.avg[k] !== undefined)
+      .slice(0, 3)
+      .map(([k, label]) => `${label} ${f(latest.avg[k])}`)
+      .join(' · ');
+    facts =
+      `📊 Що зараз в Україні:\n` +
+      `${FUEL_LABELS[fuel]} ${f(latest.avg[fuel])} грн/л${chTxt}\n` +
+      (others ? `${others}\n` : '') +
+      `\n`;
+  }
+
+  return (
+    `${up ? '🔺' : '🟢'} ${pick.title}\n\n` +
+    (pick.summary ? `${pick.summary.slice(0, 300).replace(/\s+\S*$/, '')}…\n\n` : '') +
+    facts +
+    `Джерело: ${pick.source}\n\n` +
+    `Ціни по всіх мережах АЗС і областях — ${SITE_LINE}\n\n` +
+    pickHashtags({ fuel, news: true })
+  );
 }
 
 // запускаємо лише при прямому виклику — instagram-carousel.mjs імпортує звідси waitReady

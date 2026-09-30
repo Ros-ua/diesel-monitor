@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useAppData } from '../context/DataContext';
 import { useFuel } from '../context/FuelContext';
 import { changeFromShown, changeOver, lastTwoNetworkDays, networkSeries } from '../lib/stats';
-import { changeColor, fmtPrice, fmtSigned, previousDayLabel } from '../lib/format';
+import { changeColor, fmtPrice, fmtSigned, networksAsOfLabel, previousDayLabel } from '../lib/format';
 import { FUEL_SHORT, type NetworkPrices } from '../types';
 
 type SortKey = 'name' | 'price' | 'd1' | 'd7' | 'd30' | 'vs';
@@ -53,6 +53,8 @@ export default function NetworksTable() {
     [history, latest.networksDate, latest.date]
   );
   const d1Label = пара ? previousDayLabel(пара.from, пара.to) : 'Вчора';
+  // стара карта мереж — чесна дата над таблицею (ревізія S4 30.09, P2-5)
+  const станом = networksAsOfLabel(latest.date, latest.networksDate);
   const columns = useMemo(() => buildColumns(fuelShort, d1Label), [fuelShort, d1Label]);
 
   const [query, setQuery] = useState('');
@@ -158,7 +160,10 @@ export default function NetworksTable() {
     >
       {/* Хедер: підпис + пошук + фільтри */}
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <div className="lbl mr-auto">Мережі АЗС — {fuelShort}</div>
+        <div className="lbl mr-auto">
+          Мережі АЗС — {fuelShort}
+          {станом && <span className="text-danger"> · {станом}</span>}
+        </div>
 
         <input
           type="text"

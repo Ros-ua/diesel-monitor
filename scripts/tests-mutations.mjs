@@ -1237,7 +1237,7 @@ const ПІДСАДКИ = [
     сюїта: 'tests-front.mjs',
     імя: `стара карта мереж вважається свіжою`,
     файл: `lib/networks-fresh.mjs`,
-    було: `  return latest.networksDate === latest.date;`,
+    було: `  return typeof nd === 'string' && ISO_DAY.test(nd) && nd === latest.date;`,
     стало: `  return true;`,
     стереже: `S4: networksDate старша за date — не свіжа`,
     сюїта: 'tests-parser.mjs',
@@ -1245,7 +1245,7 @@ const ПІДСАДКИ = [
   {
     імя: `без networksDate карта вважається старою`,
     файл: `lib/networks-fresh.mjs`,
-    було: `  if (!latest?.networksDate) return true;
+    було: `  if (nd === undefined || nd === null) return true;
 `,
     стало: ``,
     стереже: `S4: карта без networksDate — свіжа`,
@@ -1254,7 +1254,7 @@ const ПІДСАДКИ = [
   {
     імя: `картка «де найдешевше» і зі старою картою`,
     файл: `instagram-news.mjs`,
-    було: `  if (!networksAreFresh(latest)) return null;
+    було: `  if (!networksAreToday(latest, now)) return null;
   const rich`,
     стало: `  const rich`,
     стереже: `S4: стара карта — картки «де найдешевше» немає`,
@@ -1263,7 +1263,7 @@ const ПІДСАДКИ = [
   {
     імя: `підпис «сьогодні» і зі старою картою`,
     файл: `instagram-news.mjs`,
-    було: `  const header = networksAreFresh(latest)
+    було: `  const header = networksAreToday(latest, now)
 `,
     стало: `  const header = true
 `,
@@ -1294,6 +1294,110 @@ const ПІДСАДКИ = [
     стало: `усі види пального, де дешевше\${`,
     стереже: `S4: карусель зі старою картою — не обіцяє «де дешевше»`,
     сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `картка «де найдешевше» у неділю з п'ятничними цінами`,
+    файл: `instagram-news.mjs`,
+    було: `  if (!networksAreToday(latest, now)) return null;
+  const rich`,
+    стало: `  if (!networksAreFresh(latest)) return null;
+  const rich`,
+    стереже: `S4: у неділю з цінами за 25.09 — картки немає`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `підпис «сьогодні» у неділю`,
+    файл: `instagram-news.mjs`,
+    було: `  const header = networksAreToday(latest, now)
+`,
+    стало: `  const header = networksAreFresh(latest)
+`,
+    стереже: `S4: у неділю — підпис без «сьогодні» і з датою даних`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `«сьогодні» за UTC, а не за Києвом`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `timeZone: 'Europe/Kyiv', year`,
+    стало: `timeZone: 'UTC', year`,
+    стереже: `S4: крон після півночі за Києвом — картки немає`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `вчорашня карта вважається свіжою (допуск доба)`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `  return typeof nd === 'string' && ISO_DAY.test(nd) && nd === latest.date;`,
+    стало: `  return typeof nd === 'string' && Date.parse(latest.date) - Date.parse(nd) <= 86400000;`,
+    стереже: `S4: networksDate на день старша — не свіжа`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `порожня networksDate знову «свіжа»`,
+    файл: `lib/networks-fresh.mjs`,
+    було: `  if (nd === undefined || nd === null) return true;`,
+    стало: `  if (!nd) return true;`,
+    стереже: `S4: порожня networksDate — не свіжа`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `підпис картки «де найдешевше» не зберігається з карткою`,
+    файл: `instagram-news.mjs`,
+    було: `        caption: підписНайдешевшого(latest, cheapFuel),
+`,
+    стало: ``,
+    стереже: `S4 P2-2: картка «де найдешевше» — підпис у pick`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `підпис новини не зберігається з карткою`,
+    файл: `instagram-news.mjs`,
+    було: `JSON.stringify({ ...pick, file, fuel, caption: підписНовини({ ...pick, fuel }, latest) })`,
+    стало: `JSON.stringify({ ...pick, file, fuel })`,
+    стереже: `S4 P2-2: новина — підпис у pick`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `публікація знову будує підпис із нового latest`,
+    файл: `instagram-news.mjs`,
+    було: `  if (typeof pick?.caption === 'string' && pick.caption) return pick.caption;
+`,
+    стало: ``,
+    стереже: `S4 P2-2: публікація бере підпис із pick, а не з нового latest`,
+    сюїта: 'tests-parser.mjs',
+  },
+  {
+    імя: `збирач не пише networksDate`,
+    файл: `collect.mjs`,
+    було: `      ...(вибір.дата && { networksDate: вибір.дата }),
+`,
+    стало: ``,
+    стереже: `/tm/ вчорашня: стара карта під своєю датою`,
+    сюїта: 'tests-collect.mjs',
+  },
+  {
+    імя: `дата старої карти дрейфує на дату знімка`,
+    файл: `collect.mjs`,
+    було: `    попередняДата: prev?.networksDate ?? prev?.date ?? null,`,
+    стало: `    попередняДата: prev?.date ?? null,`,
+    стереже: `друга доба: дата карти не дрейфує`,
+    сюїта: 'tests-collect.mjs',
+  },
+  {
+    імя: `сайт мовчить про стару карту мереж`,
+    файл: `../src/lib/format.ts`,
+    було: `  networksDate && networksDate !== date ? `,
+    стало: `  false ? `,
+    стереже: `мережі: стара карта — позначка «станом на»`,
+    сюїта: 'tests-front.mjs',
+  },
+  {
+    імя: `таблиця мереж не показує позначку`,
+    файл: `../src/components/NetworksTable.tsx`,
+    було: `          {станом && <span className="text-danger"> · {станом}</span>}
+`,
+    стало: ``,
+    стереже: `мережі: таблиця показує позначку «станом на»`,
+    сюїта: 'tests-front.mjs',
   },
   {
     імя: `збір знову з правами Pages на весь файл`,

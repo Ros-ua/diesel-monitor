@@ -95,5 +95,20 @@ const рухи = extremeMoves(серія, null);
 проба('добове падіння — −0,30 20 бер', [рухи.drop?.date, Math.round(рухи.drop?.abs * 100) / 100], ['2026-03-20', -0.3]);
 
 console.log('');
+console.log('P2-5: СТАРА КАРТА МЕРЕЖ НА САЙТІ (ревізія S4 30.09)');
+{
+  // На старому коді функції немає — проба червоніє, а не валить увесь набір.
+  const { networksAsOfLabel } = await import('../src/lib/format.ts');
+  const станом = typeof networksAsOfLabel === 'function' ? networksAsOfLabel : () => 'НЕМА ФУНКЦІЇ';
+  проба('мережі: стара карта — позначка «станом на»', станом('2026-09-25', '2026-09-18'), 'ціни мереж станом на 18 вер');
+  проба('мережі: свіжа карта — позначки немає', станом('2026-09-25', '2026-09-25'), null);
+  проба('мережі: без networksDate — позначки немає', станом('2026-09-25', undefined), null);
+  // Компонент без збирача тут не відрендерити — дивимось будову файлу (§4а: лише куди виклик не дотягнеться).
+  const таблиця = readFileSync(new URL('../src/components/NetworksTable.tsx', import.meta.url), 'utf8');
+  проба('мережі: таблиця показує позначку «станом на»',
+    /networksAsOfLabel\(latest\.date, latest\.networksDate\)/.test(таблиця) && /\{станом && </.test(таблиця), true);
+}
+
+console.log('');
 if (провалів) { console.log(`❌ ПРОВАЛІВ: ${провалів}`); process.exit(1); }
 console.log('✅ усі проби фронтенду пройшли');
