@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   post:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # тільки після успішного збору; вихідні пропускаємо — Мінфін їх не оновлює
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -35,10 +35,10 @@ jobs:
     steps:
       # workflow_run стартує на комміті ДО збору — беремо явно свіжий main,
       # інакше картка згенерується зі старих цін
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: 22
           cache: npm
