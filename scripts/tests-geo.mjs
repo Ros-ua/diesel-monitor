@@ -26,6 +26,9 @@ import {
   pricePageLd,
   siteLd,
   makeLlms,
+  makeLlmsFull,
+  makeSitemap,
+  dataDownload,
 } from './prerender.mjs';
 
 let провалів = 0;
@@ -75,6 +78,7 @@ function розібрати(html) {
 
 const ЦІНИ = { dp: 98.68, a95p: 92.64, a95: 88.99, a92: 84.26, gas: 44.09 };
 const ДЕНЬ = '2026-09-15';
+const S0 = 'https://diesel-monitor.pp.ua';
 
 // ─── renderJsonLd ────────────────────────────────────────────────────────────
 
@@ -357,6 +361,51 @@ const ВХІД = {
 падіння('llms.txt не будується на даті збірки', () => makeLlms({ ...ВХІД, day: new Date() }));
 падіння('llms.txt не будується на українській даті', () => makeLlms({ ...ВХІД, day: '15.09.2026' }));
 
+// ─── Dataset: dateModified і distribution (17.10.2026) ──────────────────────
+{
+  const [, область] = pricePageLd({ kind: 'region', name: 'Львівська', prices: ЦІНИ, day: ДЕНЬ });
+  проба('область: dateModified — день спостереження', область.dateModified, ДЕНЬ);
+  проба('область: distribution — latest.json', область.distribution?.contentUrl, 'https://diesel-monitor.pp.ua/data/latest.json');
+  const [, мережа] = pricePageLd({ kind: 'network', name: 'ОККО', prices: ЦІНИ, day: '2026-09-10' });
+  проба('мережа: dateModified — день карти мереж', мережа.dateModified, '2026-09-10');
+  const сайт = siteLd({ day: ДЕНЬ, date: '15.09.2026', avg: ЦІНИ, regionCount: 1, networkCount: 1 })
+    .find(n => n['@type'] === 'Dataset');
+  проба('сайт: dateModified — день спостереження', сайт.dateModified, ДЕНЬ);
+  проба('сайт: distribution — той самий файл', сайт.distribution, dataDownload());
+}
+
+// ─── makeSitemap ─────────────────────────────────────────────────────────────
+{
+  const xml = makeSitemap([
+    { url: `${S0}/`, day: ДЕНЬ },
+    { url: `${S0}/network/okko/`, day: '2026-09-10' },
+    { url: `${S0}/privacy/` },
+  ]);
+  істина('sitemap: lastmod — день даних сторінки', xml.includes(`<loc>${S0}/network/okko/</loc><lastmod>2026-09-10</lastmod>`));
+  істина('sitemap: без дня — без lastmod', xml.includes(`<loc>${S0}/privacy/</loc><changefreq>`));
+  проба('sitemap: усі адреси на місці', (xml.match(/<loc>/g) ?? []).length, 3);
+  істина('sitemap: головна з найвищим пріоритетом', xml.includes(`<loc>${S0}/</loc><lastmod>${ДЕНЬ}</lastmod><changefreq>daily</changefreq><priority>1.0</priority>`));
+  падіння('sitemap: не бере українську дату', () => makeSitemap([{ url: `${S0}/`, day: '15.09.2026' }]), TypeError);
+  падіння('sitemap: не бере чужу адресу', () => makeSitemap([{ url: 'https://example.com/' }]), TypeError);
+  падіння('sitemap: не пише адресу двічі', () => makeSitemap([{ url: `${S0}/` }, { url: `${S0}/` }]), Error);
+}
+
+// ─── makeLlmsFull ────────────────────────────────────────────────────────────
+{
+  const txt = makeLlmsFull({
+    day: ДЕНЬ, netDay: '2026-09-10', avg: ЦІНИ,
+    regionAvg: { 'Львівська': { dp: 99.1 } },
+    networks: { 'АЗС (Захід)': { dp: 97.5, gas: 44 } },
+  });
+  істина('llms-full: заголовок', txt.startsWith('# Дизель Монітор UA — повні дані'));
+  істина('llms-full: середні з датою спостереження', txt.includes('## Середні ціни по Україні (15.09.2026)'));
+  істина('llms-full (одиниця): мережі — своєю датою', txt.includes('## Ціни мереж АЗС (10.09.2026;'));
+  істина('llms-full: назва з дужками екранована', txt.includes('| АЗС \\(Захід\\) | 97,50 |'));
+  істина('llms-full: ціна області', txt.includes('| Львівська | 99,10 | — |'));
+  падіння('llms-full: не будується на даті збірки', () => makeLlmsFull({ day: new Date(), netDay: ДЕНЬ, avg: ЦІНИ }), TypeError);
+  падіння('llms-full: не будується без дня карти мереж', () => makeLlmsFull({ day: ДЕНЬ, avg: ЦІНИ }), TypeError);
+}
+
 // ─── одна дата на сторінках мереж (наскрізно) ───────────────────────────────
 // ⚠️ Видима дата і дата розмітки на сторінках мереж мусять бути ОДНІЄЮ — днем
 // карти мереж (networksDate). Перевіряємо ПОВЕДІНКУ: рендеримо справжні сторінки
@@ -391,8 +440,10 @@ const ВХІД = {
         '<!doctype html><html><head></head><body><div id="root"></div></body></html>');
       execFileSync(process.execPath, [копія], { stdio: 'pipe' });
       const читати = (...ч) => fs.readFileSync(path.join(тека, 'dist', ...ч, 'index.html'), 'utf-8');
-      return { мережа: читати('network', 'okko'), дизель: читати('network', 'okko', 'dyzel'),
-               область: читати('region', 'lvivska') };
+      const файл = ім => fs.readFileSync(path.join(тека, 'dist', ім), 'utf-8');
+      return { мережа: читати('network', 'okko'), дизель: читати('network', 'okko', 'dyzel'), wog: читати('network', 'wog'),
+               область: читати('region', 'lvivska'), найдешевше: читати('cheapest', 'dyzel'),
+               головна: файл('index.html'), sitemap: файл('sitemap.xml'), повний: файл('llms-full.txt') };
     } finally {
       fs.rmSync(тека, { recursive: true, force: true });
     }
@@ -441,6 +492,109 @@ const ВХІД = {
     const безДати = рендер({ networksDate: '2026-09-15', regions: таблиця }).мережа;
     істина('мережа: без дати матриці таблиця підписана датою середніх цін',
       безДати.includes('ДИЗЕЛЬ ПО ОБЛАСТЯХ · станом на 24.09.2026'));
+
+    // ── GEO 17.10.2026: sitemap, «де найдешевше», перше речення, llms-full ──
+    // Той самий стенд: карта мереж 15.09, середні 24.09, день збірки — сьогодні.
+    const { найдешевше, головна, sitemap, повний, wog } = рендер({ networksDate: '2026-09-15', regions: {} });
+    const lastmod = адреса => sitemap.match(new RegExp(`<loc>${адреса}</loc><lastmod>([^<]+)</lastmod>`))?.[1];
+    проба('sitemap: lastmod сторінки мережі — день карти мереж',
+      lastmod('https://diesel-monitor.pp.ua/network/okko/'), '2026-09-15');
+    проба('sitemap: lastmod сторінки мережа×паливо — день карти мереж',
+      lastmod('https://diesel-monitor.pp.ua/network/okko/dyzel/'), '2026-09-15');
+    проба('sitemap: lastmod області — день середніх цін',
+      lastmod('https://diesel-monitor.pp.ua/region/lvivska/'), '2026-09-24');
+    // ⚠️ На «де найдешевше» є і середня (24.09) — сторінка змінюється з нею теж,
+    // тож lastmod — найпізніший із днів її даних (знахідка Sol 17.10).
+    проба('sitemap: lastmod «де найдешевше» — найпізніший день його даних',
+      lastmod('https://diesel-monitor.pp.ua/cheapest/dyzel/'), '2026-09-24');
+    проба('sitemap: lastmod головної — найпізніший день її даних',
+      lastmod('https://diesel-monitor.pp.ua/'), '2026-09-24');
+    {
+      // Матриця /detail/ свіжіша за карту мереж — сторінка мережі з її таблицею змінилась.
+      const зТаблицею = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-20',
+        regions: { 'Львівська': { 'ОККО': { dp: 58 } } } }).sitemap;
+      проба('sitemap: lastmod мережі — і дата таблиці областей',
+        зТаблицею.match(/<loc>https:\/\/diesel-monitor\.pp\.ua\/network\/okko\/<\/loc><lastmod>([^<]+)</)?.[1], '2026-09-20');
+    }
+    {
+      const olderCoverage = { 'Львівська': { 'ОККО': { dp: 58 } } };
+      const newerCoverage = { ...olderCoverage, 'Київська': { 'ОККО': { dp: 59 } } };
+      const older = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-16', regions: olderCoverage });
+      const newer = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-20', regions: newerCoverage });
+      const coverage = html => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+        .flatMap(m => JSON.parse(m[1])).find(n => n['@type'] === 'Dataset')?.spatialCoverage;
+      істина('мережа×паливо: оновлена матриця справді змінює охоплення',
+        JSON.stringify(coverage(older.дизель)) !== JSON.stringify(coverage(newer.дизель)));
+      проба('sitemap: lastmod мережа×паливо бачить дату охоплення',
+        newer.sitemap.match(/<loc>https:\/\/diesel-monitor\.pp\.ua\/network\/okko\/dyzel\/<\/loc><lastmod>([^<]+)</)?.[1], '2026-09-20');
+      const legacy = рендер({ networksDate: '2026-09-15', regions: olderCoverage });
+      проба('sitemap: без дати матриці охоплення має дату середніх',
+        legacy.sitemap.match(/<loc>https:\/\/diesel-monitor\.pp\.ua\/network\/okko\/dyzel\/<\/loc><lastmod>([^<]+)</)?.[1], '2026-09-24');
+      const gasOnly = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-20',
+        regions: { 'Львівська': { 'ОККО': { gas: 29 } } } });
+      проба('sitemap: lastmod мережі бачить охоплення без таблиці дизеля',
+        gasOnly.sitemap.match(/<loc>https:\/\/diesel-monitor\.pp\.ua\/network\/okko\/<\/loc><lastmod>([^<]+)</)?.[1], '2026-09-20');
+      const dataset = html => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+        .flatMap(m => JSON.parse(m[1])).find(n => n['@type'] === 'Dataset');
+      проба('мережа: dateModified враховує охоплення', dataset(newer.мережа).dateModified, '2026-09-20');
+      проба('мережа×паливо: dateModified враховує охоплення', dataset(newer.дизель).dateModified, '2026-09-20');
+      проба('мережа×паливо: temporalCoverage лишається днем цін', dataset(newer.дизель).temporalCoverage, '2026-09-15');
+      const removed = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-24',
+        regions: { 'Львівська': { 'WOG': { dp: 61 } } } });
+      істина('мережа×паливо: після видалення матриці охоплення зникає', dataset(removed.дизель).spatialCoverage === undefined);
+      for (const suffix of ['okko/', 'okko/dyzel/']) {
+        проба(`sitemap: видалення охоплення оновлює ${suffix}`,
+          removed.sitemap.match(new RegExp(`<loc>https://diesel-monitor\\.pp\\.ua/network/${suffix}</loc><lastmod>([^<]+)</`))?.[1], '2026-09-24');
+      }
+      const emptyMatrix = рендер({ networksDate: '2026-09-15', breakdownDate: '2026-09-25', regions: {} });
+      проба('sitemap: датована порожня матриця також є новим спостереженням',
+        emptyMatrix.sitemap.match(/<loc>https:\/\/diesel-monitor\.pp\.ua\/network\/okko\/dyzel\/<\/loc><lastmod>([^<]+)</)?.[1], '2026-09-25');
+    }
+    const деньЗбірки = new Date().toISOString().slice(0, 10);
+    істина('sitemap: ніде немає дня збірки', !sitemap.includes(`<lastmod>${деньЗбірки}</lastmod>`));
+    істина('sitemap: статичні сторінки без lastmod',
+      sitemap.includes('<loc>https://diesel-monitor.pp.ua/privacy/</loc><changefreq>'));
+
+    // «Де найдешевше» — рейтинг МЕРЕЖ: дата скрізь карти мереж.
+    істина('найдешевше: відповідь датована картою мереж',
+      найдешевше.includes('Станом на <b>15.09.2026</b> найдешевший дизель'));
+    істина('найдешевше: «оновлено» — дата карти мереж', найдешевше.includes('оновлено 15.09.2026 · рейтинг'));
+    істина('найдешевше: заголовок — дата карти мереж', найдешевше.includes('<title>Де найдешевший дизель в Україні — 15.09.2026'));
+    // Середня іншого дня: підписана своєю датою, а мережі з нею не порівнюються.
+    істина('найдешевше: середня підписана своєю датою', найдешевше.includes('Середня по Україні станом на 24.09.2026: 60,00 грн/л'));
+    істина('найдешевше: без порівняння мереж із середньою іншого дня',
+      !/<td>[−+]\d/.test(найдешевше) && найдешевше.includes('<td>—</td>'));
+
+    // Головна: «Дизель — від …» береться з мереж — підпис їхньої дати, коли вона інша.
+    істина('головна: мінімум мереж підписаний датою карти мереж',
+      головна.includes('Дизель — від 59,00 грн/л (ціни мереж станом на 15.09.2026)'));
+
+    // Перше речення сторінки мережі — відповідь із числом і місцем.
+    істина('мережа: перше речення — ціна дизеля і місце серед мереж',
+      мережа.includes('Дизель у мережі <b>ОККО</b> станом на 15.09.2026 коштує <b>61,00</b> грн/л — це <b>3 місце з 5</b>'));
+    // ⚠️ ОККО у стенді рівно посередині (3 з 5) — з обох боків рейтингу те саме
+    // місце, і перевернуте сортування проба вище не бачить (підсадка 17.10 це
+    // показала). WOG — 4-те від дешевшої, 2-ге від дорожчої.
+    істина('мережа: місце рахується від найдешевшої',
+      wog.includes('це <b>4 місце з 5</b> серед мереж АЗС України за ціною дизеля'));
+    // ⚠️ Середня — іншого дня (24.09), тож порівнювати з нею не можна.
+    істина('мережа: без порівняння з середньою іншого дня', !мережа.includes('за середню по країні'));
+    const одинДень = рендер({ networksDate: '2026-09-24', regions: {} });
+    істина('мережа: порівняння з середньою, коли день той самий',
+      одинДень.мережа.includes('на 1,00 грн дорожче за середню по країні'));
+    істина('головна: без розбіжності дат — без підпису мереж',
+      одинДень.головна.includes('Дизель — від 59,00 грн/л.'));
+    істина('найдешевше: того самого дня — порівняння з середньою є',
+      одинДень.найдешевше.includes('<td>−1,00</td>') && одинДень.найдешевше.includes('Середня по Україні: 60,00 грн/л'));
+
+    // llms-full: кожна таблиця — своєю датою.
+    істина('llms-full: області підписані днем середніх цін', повний.includes('## Середні ціни по областях (24.09.2026)'));
+    істина('llms-full: мережі підписані днем карти мереж', повний.includes('## Ціни мереж АЗС (15.09.2026;'));
+    істина('llms-full: ціна мережі в таблиці', /\| ОККО \| 61,00 \| — \| 56,00 \| — \| 31,00 \|/.test(повний));
+
+    // Джерело — посиланням на ту саму сторінку, яку читає збирач.
+    істина('сторінки: джерело цін — посилання на Мінфін',
+      мережа.includes('<a href="https://index.minfin.com.ua/ua/markets/fuel/" rel="noopener">Мінфін</a>'));
   } catch (e) {
     істина('наскрізний рендер сторінок мереж не впав: ' + e.message.split('\n')[0], false);
   }

@@ -1,0 +1,75 @@
+name: Ролик цін (HyperFrames, чернетка)
+
+# ЧЕРНЕТКА 17.10.2026. Ролик 9 с 1080×1920 з тієї ж картки цін, що й
+# price-card.mjs: рядки пального по черзі, ціни «докручуються», лінія дизеля.
+# Композиція — HTML + GSAP (scripts/price-video.mjs), відео рендерить CLI
+# HyperFrames: headless Chrome кадр за кадром → ffmpeg.
+#
+# Поки ЛИШЕ ручний запуск і БЕЗ публікації: готовий MP4 лягає артефактом
+# запуску (14 днів). Куди його слати (Telegram, Instagram) — вирішує Рос;
+# тоді сюди додається тригер workflow_run від «Збір цін (щодня)» і крок
+# публікації. Секрети тут не потрібні взагалі.
+#
+# Замір 17.10 (ноутбук Mint, 4 ядра, як раннер): рендер 46 с, 545 МБ памʼяті,
+# файл ~0,85 МБ. Увесь запуск з установкою — оцінка 2–3 хв.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: price-video
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HYPERFRAMES_NO_TELEMETRY: '1'
+      DO_NOT_TRACK: '1'
+      HYPERFRAMES_SKIP_SKILLS: '1'
+      # Стабільний screenshot-захват: експериментальний drawElementImage
+      # несумісний із деякими новими версіями Chrome.
+      PRODUCER_EXPERIMENTAL_FAST_CAPTURE: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .github/price-video/package-lock.json
+      - run: npm ci
+
+      # Окремий lock-файл закріплює також транзитивні залежності інструмента.
+      # Звичайні збори цін не встановлюють цей пакет.
+      - name: HyperFrames і ffmpeg
+        run: npm ci --prefix .github/price-video --no-audit --no-fund
+
+      - name: Композиція з даних дня
+        run: node scripts/price-video.mjs video
+
+      - name: Рендер
+        run: |
+          # Chrome у образі ubuntu-24.04 є; немає — падаємо зрозуміло, а не мовчки
+          export HYPERFRAMES_BROWSER_PATH="$(command -v google-chrome || true)"
+          if [ -z "$HYPERFRAMES_BROWSER_PATH" ]; then echo "::error::немає google-chrome в образі раннера"; exit 1; fi
+          node scripts/tests-video-browser.mjs
+          export HYPERFRAMES_FFMPEG_PATH="$(node -p "require('./.github/price-video/node_modules/ffmpeg-static')")"
+          export HYPERFRAMES_FFPROBE_PATH="$(node -p "require('./.github/price-video/node_modules/ffprobe-static').path")"
+          ./.github/price-video/node_modules/.bin/hyperframes lint video
+          mkdir -p out
+          # --strict: помилка лінтера валить рендер, а не дає кривий ролик
+          ./.github/price-video/node_modules/.bin/hyperframes render video -o out/price-video.mp4 --quiet --strict
+          "$HYPERFRAMES_FFPROBE_PATH" -v error -show_entries format=duration,size \
+            -show_entries stream=width,height,codec_name -of compact out/price-video.mp4
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: price-video
+          path: out/price-video.mp4
+          retention-days: 14

@@ -10,6 +10,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
 const SITE = 'https://diesel-monitor.pp.ua';
+// Першоджерело цін — та сама сторінка, яку читає collect.mjs. Посилання на
+// джерело ШІ-пошуковики зараховують як цитування, а людина може звірити ціну.
+const SOURCE_URL = 'https://index.minfin.com.ua/ua/markets/fuel/';
 
 const FUELS = [
   ['dp', 'Дизель (ДП)'],
@@ -105,6 +108,34 @@ export function isoDay(value) {
   return value;
 }
 
+// Де взяти самі числа: той самий latest.json, який читають сайт і віджет
+// (CORS *). Google Dataset просить distribution, щоб набір можна було завантажити.
+export function dataDownload() {
+  return {
+    '@type': 'DataDownload',
+    encodingFormat: 'application/json',
+    contentUrl: `${SITE}/data/latest.json`,
+  };
+}
+
+// sitemap.xml: lastmod — день, коли змінились ДАНІ сторінки, а не день збірки.
+// Сайт перезбирається кожні 3 години заради новин; раніше всі 307 адрес щоразу
+// отримували «сьогодні», навіть коли ціни лишались вчорашніми (живий сайт
+// 16.10.2026: lastmod 2026-10-16 при даних 15.10). Google за таке перестає
+// вірити lastmod зовсім. Дня немає — тега немає: мовчання чесніше.
+export function makeSitemap(entries) {
+  const seen = new Set();
+  const rows = entries.map(({ url, day }) => {
+    if (typeof url !== 'string' || !url.startsWith(`${SITE}/`)) throw new TypeError(`Чужа адреса в sitemap: ${url}`);
+    if (seen.has(url)) throw new Error(`Адреса двічі в sitemap: ${url}`);
+    seen.add(url);
+    const lastmod = day === undefined || day === null ? '' : `<lastmod>${isoDay(day)}</lastmod>`;
+    return `  <url><loc>${url}</loc>${lastmod}<changefreq>daily</changefreq><priority>${url === `${SITE}/` ? '1.0' : '0.7'}</priority></url>`;
+  });
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    rows.join('\n') + '\n</urlset>\n';
+}
+
 export function breadcrumbLd(canonical, trail) {
   const items = [['Дизель Монітор UA', `${SITE}/`], ...trail];
   return {
@@ -151,7 +182,7 @@ export function priceVariables(prices, fuelKey) {
 // із 36 живуть рівно в одній області (померено 20.09.2026). Тобто машині
 // повідомлялося перевірно неправдиве твердження про всю країну. Списку немає —
 // поля немає взагалі: мовчання чесніше за вигадане охоплення.
-export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
+export function pricePageLd({ kind, name, prices, day, fuelKey, areas, modifiedDay = day }) {
   if (kind !== 'region' && kind !== 'network') throw new TypeError(`Невідомий тип: ${kind}`);
   if (areas !== undefined && (!Array.isArray(areas) || areas.some(a => typeof a !== 'string' || !a))) {
     throw new TypeError(`areas має бути списком назв областей, а не ${JSON.stringify(areas)}`);
@@ -182,7 +213,11 @@ export function pricePageLd({ kind, name, prices, day, fuelKey, areas }) {
     // Дата СПОСТЕРЕЖЕННЯ, а не дата збірки сайту. Розмітка не має обіцяти,
     // що ціна чинна сьогодні, якщо дані зібрані раніше.
     temporalCoverage: iso,
+    // Ціни й охоплення мають власні дати спостережень; зміна будь-якого
+    // компонента змінює набір. Дата збірки сайту сюди не потрапляє.
+    dateModified: isoDay(modifiedDay),
     variableMeasured: variables,
+    distribution: dataDownload(),
     creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
     isAccessibleForFree: true,
     // ⚠️ Видавець — той самий вузол Organization, що й на головній (siteLd):
@@ -257,8 +292,10 @@ export function siteLd({ day, date, avg, regionCount, networkCount }) {
       description: `Середні ціни на дизель, бензин А-95, А-92 та автогаз в Україні станом на ${date}. ${regionCount} областей, ${networkCount} мереж АЗС. Оновлюється щодня.`,
       inLanguage: 'uk',
       temporalCoverage: day,
+      dateModified: day,
       spatialCoverage: { '@type': 'Place', name: 'Україна' },
       variableMeasured: priceVariables(avg),
+      distribution: dataDownload(),
       creditText: 'Джерело цін: Мінфін (Консалтингова група А-95).',
       isAccessibleForFree: true,
       publisher: { '@id': `${SITE}/#organization` },
@@ -338,6 +375,44 @@ export function makeLlms({ day, urls, regionEntries, netEntries, cheapEntries, a
   ].join('\n');
 }
 
+// llms-full.txt — супутник llms.txt: самі числа текстом, без переходів по
+// посиланнях. Модель, яка прочитала один файл, має всі ціни з їхніми датами.
+// ⚠️ У мереж і областей РІЗНІ дати (networksDate і latest.date) — кожна таблиця
+// підписана своєю, інакше вчорашню карту мереж машина процитує як сьогоднішню.
+export function makeLlmsFull({ day, netDay, avg, regionAvg, networks }) {
+  const iso = isoDay(day);
+  const netIso = isoDay(netDay);
+  const cell = v => (Number.isFinite(v) ? fmt(v) : '—');
+  const table = (head, entries) => [
+    `| ${head} | ${FUELS.map(([, l]) => l).join(' | ')} |`,
+    `|---|${FUELS.map(() => '---:').join('|')}|`,
+    ...entries.map(([name, p]) => `| ${md(name)} | ${FUELS.map(([k]) => cell(p?.[k])).join(' | ')} |`),
+  ];
+  const regions = Object.entries(regionAvg ?? {}).sort((a, b) => a[0].localeCompare(b[0], 'uk'));
+  const nets = Object.entries(networks ?? {}).sort((a, b) => a[0].localeCompare(b[0], 'uk'));
+  return [
+    '# Дизель Монітор UA — повні дані',
+    '',
+    '> Ціни на пальне в Україні по областях і мережах АЗС, грн/л. Джерело: Мінфін (Консалтингова група А-95).',
+    '',
+    `Карта сайту: ${SITE}/llms.txt. Дані у JSON: ${SITE}/data/latest.json.`,
+    'Ціни довідкові — на конкретній АЗС може відрізнятися.',
+    '',
+    `## Середні ціни по Україні (${uaDate(iso)})`,
+    '',
+    ...FUELS.filter(([k]) => Number.isFinite(avg?.[k])).map(([k, l]) => `- ${l}: ${fmt(avg[k])} грн/л`),
+    '',
+    `## Середні ціни по областях (${uaDate(iso)})`,
+    '',
+    ...(regions.length ? table('Область', regions) : ['- немає даних у поточному знімку']),
+    '',
+    `## Ціни мереж АЗС (${uaDate(netIso)}; національна ціна мережі — медіана по областях)`,
+    '',
+    ...(nets.length ? table('Мережа', nets) : ['- немає даних у поточному знімку']),
+    '',
+  ].join('\n');
+}
+
 function page({ title, description, canonical, h1, sub, bodyHtml, spaLink, navHtml, ctaText = 'Інтерактивний дашборд →', jsonLd }) {
   return `<!doctype html>
 <html lang="uk">
@@ -386,7 +461,7 @@ td{padding:6px 8px;text-align:right;border-bottom:1px solid rgba(0,210,170,.07)}
 ${bodyHtml}
 <a class="cta" href="${spaLink}">${ctaText}</a>
 <div class="card nav">${navHtml}</div>
-<div class="foot">Джерело цін: Мінфін (Консалтингова група А-95). Ціни довідкові; актуальні — на АЗС.<br>
+<div class="foot">Джерело цін: <a href="${SOURCE_URL}" rel="noopener">Мінфін</a> (Консалтингова група А-95). Ціни довідкові; актуальні — на АЗС.<br>
 © Дизель Монітор UA · <a href="${SITE}/">${SITE.replace('https://', '')}</a></div>
 </div></body></html>`;
 }
@@ -416,6 +491,19 @@ async function main() {
   const networks = latest.networks ?? {};
   const avg = latest.avg ?? {};
   const urls = [`${SITE}/`];
+  // День даних кожної адреси — для lastmod у sitemap (див. makeSitemap).
+  // ⚠️ Сторінка може складатися з даних РІЗНИХ днів (середні, карта мереж,
+  // матриця /detail/) — lastmod бере найпізніший із тих, що на ній справді є:
+  // оновилась будь-яка частина — сторінка змінилась (знахідка Sol 17.10).
+  const пізніша = (...дні) => дні.filter(Boolean).sort().at(-1);
+  // Навіть порожня нова матриця може видалити попереднє охоплення мережі.
+  const networkModifiedDay = пізніша(netDay,
+    latest.breakdownDate != null || Object.keys(regions).length ? regDay : undefined);
+  const днівДаних = new Map([[`${SITE}/`, пізніша(latest.date, netDay)]]);
+  const додати = (url, day) => {
+    urls.push(url);
+    if (day) днівДаних.set(url, day);
+  };
 
   // Області, де кожну мережу видно в даних, — це і є охоплення її Dataset.
   const областіМережі = new Map();
@@ -515,7 +603,7 @@ async function main() {
     const dir = path.join(DIST, 'region', slug);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, 'index.html'), html);
-    urls.push(`${SITE}/region/${slug}/`);
+    додати(`${SITE}/region/${slug}/`, latest.date);
   }
 
   // ── Сторінки мереж ──
@@ -549,6 +637,24 @@ async function main() {
         '</table>'
       : '';
 
+    // Перше речення — готова відповідь «скільки коштує дизель в X»: саме його
+    // ШІ-пошуковики виносять у відповідь. Числа — ті самі, що в таблиці нижче.
+    // Порівняння з середньою — лише коли середня того самого дня, що й карта мереж.
+    const dpRank = Object.entries(networks)
+      .filter(([, p]) => Number.isFinite(p.dp))
+      .sort((a, b) => a[1].dp - b[1].dp)
+      .map(([n]) => n);
+    const dpPos = dpRank.indexOf(network) + 1;
+    const dpDiff = netDay === latest.date && Number.isFinite(avg.dp) && Number.isFinite(prices.dp) ? prices.dp - avg.dp : null;
+    const netIntro = Number.isFinite(prices.dp)
+      ? `<p>Дизель у мережі <b>${esc(network)}</b> станом на ${netDate} коштує <b>${fmt(prices.dp)}</b> грн/л — ` +
+        `це <b>${dpPos} місце з ${dpRank.length}</b> серед мереж АЗС України за ціною дизеля` +
+        (dpDiff !== null && Math.abs(dpDiff) >= 0.005
+          ? `, на ${fmt(Math.abs(dpDiff))} грн ${dpDiff > 0 ? 'дорожче' : 'дешевше'} за середню по країні`
+          : '') +
+        `.</p>`
+      : '';
+
     const html = page({
       title: `${network} — ціни на пальне сьогодні: дизель, бензин, автогаз (${netDate})`,
       description: `Ціни ${network} на ${netDate}: дизель ${fmt(prices.dp)} грн/л${prices.a95 !== undefined ? `, А-95 ${fmt(prices.a95)}` : ''}${prices.gas !== undefined ? `, автогаз ${fmt(prices.gas)}` : ''}. Медіана по областях присутності, оновлюється щодня.`,
@@ -556,17 +662,17 @@ async function main() {
       h1: `${network} — ціни на пальне`,
       sub: `оновлено ${netDate} · національна ціна = медіана по областях`,
       bodyHtml:
-        `<div class="card">${natTable}</div>` +
+        `<div class="card">${netIntro}${natTable}</div>` +
         (regTable ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ДИЗЕЛЬ ПО ОБЛАСТЯХ${regNote}</div>${regTable}</div>` : ''),
       spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
       navHtml: netNav,
-      jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, areas: областіМережі.get(network) }),
+      jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, areas: областіМережі.get(network), modifiedDay: networkModifiedDay }),
     });
 
     const dir = path.join(DIST, 'network', slug);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, 'index.html'), html);
-    urls.push(`${SITE}/network/${slug}/`);
+    додати(`${SITE}/network/${slug}/`, networkModifiedDay);
   }
 
   // ── Матриця «паливо × область» ──
@@ -644,7 +750,7 @@ async function main() {
       const dir = path.join(DIST, 'region', rslug, f.slug);
       await mkdir(dir, { recursive: true });
       await writeFile(path.join(dir, 'index.html'), html);
-      urls.push(`${SITE}/region/${rslug}/${f.slug}/`);
+      додати(`${SITE}/region/${rslug}/${f.slug}/`, latest.date);
       matrixCount++;
     }
   }
@@ -703,13 +809,13 @@ async function main() {
           (otherFuels ? `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">ІНШЕ ПАЛЬНЕ ЦІЄЇ МЕРЕЖІ</div>${otherFuels}</div>` : ''),
         spaLink: `${SITE}/#/network/${encodeURIComponent(network)}`,
         navHtml: netNav,
-        jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, fuelKey: fk, areas: областіМережі.get(network) }),
+        jsonLd: pricePageLd({ kind: 'network', name: network, prices, day: netDay, fuelKey: fk, areas: областіМережі.get(network), modifiedDay: networkModifiedDay }),
       });
 
       const dir = path.join(DIST, 'network', nslug, f.slug);
       await mkdir(dir, { recursive: true });
       await writeFile(path.join(dir, 'index.html'), html);
-      urls.push(`${SITE}/network/${nslug}/${f.slug}/`);
+      додати(`${SITE}/network/${nslug}/${f.slug}/`, networkModifiedDay);
       matrixCount++;
     }
   }
@@ -737,7 +843,7 @@ async function main() {
   const seoHome =
     `<div style="max-width:860px;margin:0 auto;padding:16px;font-family:'Courier New',monospace;color:#e0ede9">` +
     `<h1 style="font-size:20px;color:#00d2aa;text-transform:uppercase;letter-spacing:.05em">Ціни на пальне в Україні сьогодні — дизель, бензин, автогаз</h1>` +
-    `<p style="font-size:13px;color:#5a7a72">Середні ціни на АЗС України станом на ${date}${Number.isFinite(dpMin) ? `. Дизель — від ${fmt(dpMin)} грн/л` : ''}. Оновлюється щодня: дизель (ДП), А-95 преміум, А-95, А-92, автогаз. Порівняння ${Object.keys(networks).length} мереж АЗС по ${Object.keys(regions).length} областях, історія, аналітика, прогноз і новини ринку.</p>` +
+    `<p style="font-size:13px;color:#5a7a72">Середні ціни на АЗС України станом на ${date}${Number.isFinite(dpMin) ? `. Дизель — від ${fmt(dpMin)} грн/л${netDay !== latest.date ? ` (ціни мереж станом на ${netDate})` : ''}` : ''}. Оновлюється щодня: дизель (ДП), А-95 преміум, А-95, А-92, автогаз. Порівняння ${Object.keys(networks).length} мереж АЗС по ${Object.keys(regions).length} областях, історія, аналітика, прогноз і новини ринку.</p>` +
     `<table style="font-size:14px;border-collapse:collapse">${avgRows}</table>` +
     `<h2 style="font-size:14px;color:#00d2aa;margin-top:16px">Де найдешевше заправитись</h2>` +
     `<p style="font-size:12px;line-height:1.9">` +
@@ -793,6 +899,10 @@ async function main() {
     const dearestNet = netRank[netRank.length - 1];
     const diff = dearestNet[1][c.key] - cheapestNet[1][c.key];
     const avgP = latest.avg?.[c.key];
+    // ⚠️ Середня — свого дня (latest.date), мережі — дня карти мереж. Різниця
+    // «мережа vs середня» чесна лише в один день; інакше стовпець «—», а сама
+    // середня підписана своєю датою (знахідка Sol 17.10).
+    const avgSameDay = netDay === latest.date;
 
     // рейтинг областей за медіаною
     const regRank = Object.entries(regions)
@@ -810,7 +920,7 @@ async function main() {
       netRank
         .slice(0, 15)
         .map(([n, p], i) => {
-          const d = avgP ? p[c.key] - avgP : null;
+          const d = avgP && avgSameDay ? p[c.key] - avgP : null;
           const dTxt = d === null ? '—' : `${d > 0 ? '+' : '−'}${fmt(Math.abs(d))}`;
           return `<tr><td>${i + 1}</td><td><a href="${SITE}/network/${slugify(n)}/">${esc(n)}</a></td><td><b>${fmt(p[c.key])}</b></td><td>${dTxt}</td></tr>`;
         })
@@ -827,23 +937,26 @@ async function main() {
 
     const answer =
       `<div class="card"><p style="font-size:14px;color:#e0ede9;margin:0 0 8px">` +
-      `Станом на <b>${date}</b> найдешевший ${esc(c.q)} — у мережі <b style="color:#00d2aa">${esc(cheapestNet[0])}</b>: ` +
+      `Станом на <b>${netDate}</b> найдешевший ${esc(c.q)} — у мережі <b style="color:#00d2aa">${esc(cheapestNet[0])}</b>: ` +
       `<b style="color:#00d2aa;font-size:18px">${fmt(cheapestNet[1][c.key])} грн/л</b>.` +
       `</p><p style="font-size:12px;color:#5a7a72;margin:0">` +
       `Найдорожче — ${esc(dearestNet[0])} (${fmt(dearestNet[1][c.key])} грн/л). Різниця між найдешевшою та найдорожчою мережею: <b>${fmt(diff)} грн/л</b>` +
-      (avgP ? `. Середня по Україні: ${fmt(avgP)} грн/л` : '') +
+      (avgP ? `. Середня по Україні${avgSameDay ? '' : ` станом на ${date}`}: ${fmt(avgP)} грн/л` : '') +
       `. На повному баку (60 л) різниця мереж — близько ${Math.round(diff * 60)} грн.` +
       `</p></div>` +
       (regRank.length
-        ? `<div class="card"><p style="font-size:13px;color:#c5d6d0;margin:0">Найдешевша область: <b style="color:#00d2aa">${esc(regRank[0][0])}</b> (медіана ${fmt(regRank[0][1])} грн/л), найдорожча — ${esc(regRank[regRank.length - 1][0])} (${fmt(regRank[regRank.length - 1][1])} грн/л).</p></div>`
+        ? `<div class="card"><p style="font-size:13px;color:#c5d6d0;margin:0">Найдешевша область: <b style="color:#00d2aa">${esc(regRank[0][0])}</b> (медіана ${fmt(regRank[0][1])} грн/л), найдорожча — ${esc(regRank[regRank.length - 1][0])} (${fmt(regRank[regRank.length - 1][1])} грн/л)${regNote}.</p></div>`
         : '');
 
     const html = page({
-      title: `Де найдешевший ${c.q} в Україні — ${date}: рейтинг АЗС`,
-      description: `Найдешевший ${c.q} на ${date} — ${esc(cheapestNet[0])} ${fmt(cheapestNet[1][c.key])} грн/л. Рейтинг ${netRank.length} мереж АЗС і областей від найдешевших до найдорожчих, оновлюється щодня.`,
+      // ⚠️ Уся сторінка — рейтинг МЕРЕЖ, тож дата скрізь — день карти мереж
+      // (netDate), як і на сторінках мереж з 25.09.2026. Раніше тут стояла дата
+      // середніх цін: при обвалі /tm/ вчорашній рейтинг виходив «станом на сьогодні».
+      title: `Де найдешевший ${c.q} в Україні — ${netDate}: рейтинг АЗС`,
+      description: `Найдешевший ${c.q} на ${netDate} — ${esc(cheapestNet[0])} ${fmt(cheapestNet[1][c.key])} грн/л. Рейтинг ${netRank.length} мереж АЗС і областей від найдешевших до найдорожчих, оновлюється щодня.`,
       canonical: `${SITE}/cheapest/${c.slug}/`,
       h1: c.h1,
-      sub: `оновлено ${date} · рейтинг ${netRank.length} мереж АЗС · грн/л`,
+      sub: `оновлено ${netDate} · рейтинг ${netRank.length} мереж АЗС · грн/л`,
       bodyHtml:
         answer +
         `<div class="card"><div style="font-size:9px;letter-spacing:.12em;color:#5a7a72;margin-bottom:6px">РЕЙТИНГ МЕРЕЖ — ВІД НАЙДЕШЕВШОЇ</div>${netTable}</div>` +
@@ -858,7 +971,8 @@ async function main() {
     const dir = path.join(DIST, 'cheapest', c.slug);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, 'index.html'), html);
-    urls.push(`${SITE}/cheapest/${c.slug}/`);
+    додати(`${SITE}/cheapest/${c.slug}/`,
+      пізніша(netDay, avgP ? latest.date : undefined, regRank.length ? regDay : undefined));
   }
   console.log(`cheapest: ${CHEAP.length} сторінок «де найдешевше»`);
 
@@ -906,7 +1020,9 @@ async function main() {
     });
     await mkdir(path.join(DIST, 'ev'), { recursive: true });
     await writeFile(path.join(DIST, 'ev', 'index.html'), evHtml);
-    urls.push(`${SITE}/ev/`);
+    // День карти зарядок — коли ev-collect востаннє її зібрав.
+    const evDay = typeof ev.updated === 'string' ? ev.updated.slice(0, 10) : undefined;
+    додати(`${SITE}/ev/`, evDay);
     console.log(`ev SEO: /ev/ (${evStations.length} станцій, ${cityCounts.length} міст)`);
   } catch (e) {
     console.log('ev SEO пропущено:', e.message);
@@ -929,19 +1045,18 @@ async function main() {
     'utf-8'
   );
   console.log('llms.txt: карта для мовних моделей');
+  await writeFile(
+    path.join(DIST, 'llms-full.txt'),
+    makeLlmsFull({ day: latest.date, netDay, avg, regionAvg, networks }),
+    'utf-8'
+  );
+  console.log('llms-full.txt: усі ціни текстом');
 
   // ── Повний sitemap ──
-  const today = new Date().toISOString().slice(0, 10);
-  const sitemap =
-    '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-    urls
-      .map(
-        u =>
-          `  <url><loc>${u}</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>${u === `${SITE}/` ? '1.0' : '0.7'}</priority></url>`
-      )
-      .join('\n') +
-    '\n</urlset>\n';
-  await writeFile(path.join(DIST, 'sitemap.xml'), sitemap);
+  await writeFile(
+    path.join(DIST, 'sitemap.xml'),
+    makeSitemap(urls.map(url => ({ url, day: днівДаних.get(url) })))
+  );
 
   console.log(`prerender: ${urls.length - 1} сторінок (${Object.keys(regions).length} областей, ${Object.keys(networks).length} мереж) + sitemap`);
 }

@@ -18,11 +18,347 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
+const browserTests = process.env.DM_VIDEO_BROWSER_TESTS === '1';
 
 const ПІДСАДКИ = [
+  {
+    імя: 'ролик: анімується лише перший рядок',
+    файл: 'price-video.mjs',
+    було: `document.querySelectorAll('.row').forEach((row, i) => {`,
+    стало: `document.querySelectorAll('.row').forEach((row, i) => { if (i > 0) return;`,
+    стереже: 'ролик: рядок 2 справді докручується',
+    сюїта: 'tests-video.mjs',
+  },
+  ...(browserTests ? [
+    {
+      імя: 'ролик: рядки зникають замість появи',
+      файл: 'price-video.mjs',
+      було: `tl.from(row, { opacity: 0`,
+      стало: `tl.to(row, { opacity: 0`,
+      стереже: 'браузер: усі рядки видимі на останньому кадрі',
+      сюїта: 'tests-video-browser.mjs',
+    },
+    {
+      імя: 'ролик: лінія залишається недомальованою',
+      файл: 'price-video.mjs',
+      було: `.to('#line', { strokeDashoffset: 0, duration: 1.6`,
+      стало: `.to('#line', { strokeDashoffset: 1, duration: 1.6`,
+      стереже: 'браузер: лінія дизеля справді намальована',
+      сюїта: 'tests-video-browser.mjs',
+    },
+  ] : []),
+  {
+    імя: 'Dataset мережі: dateModified ігнорує нове охоплення',
+    файл: 'prerender.mjs',
+    було: `    dateModified: isoDay(modifiedDay),`,
+    стало: `    dateModified: isoDay(day),`,
+    стереже: 'мережа: dateModified враховує охоплення',
+    сюїта: 'tests-geo.mjs',
+  },
   // ── GEO: розмітка JSON-LD і llms.txt ──
   // Кожна ламає рівно один рубіж у prerender.mjs і має червонити СВОЮ пробу
   // в tests-geo.mjs. Якщо червоніє чужа — значить, свій рубіж не охороняється.
+  // ── Ролик цін (price-video.mjs, 17.10.2026) ──
+  {
+    імя: 'ролик: анімація затирає назву замість ціни',
+    файл: 'price-video.mjs',
+    було: `const num = row.querySelector('.num');`,
+    стало: `const num = row.querySelector('.name');`,
+    стереже: 'ролик: скрипт композиції виконується без помилок',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'sitemap: мережа×паливо ігнорує оновлення охоплення',
+    файл: 'prerender.mjs',
+    було: `      додати(\`\${SITE}/network/\${nslug}/\${f.slug}/\`, networkModifiedDay);`,
+    стало: `      додати(\`\${SITE}/network/\${nslug}/\${f.slug}/\`, netDay);`,
+    стереже: 'sitemap: lastmod мережа×паливо бачить дату охоплення',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    // Знахідка Sol 17.10: проба вихідного HTML цього не бачила.
+    імя: 'ролик: анімація пише в ціну нуль',
+    файл: 'price-video.mjs',
+    було: `onUpdate: () => { num.textContent = o.v.toFixed(2).replace('.', ','); } }, at);`,
+    стало: `onUpdate: () => { num.textContent = (0).toFixed(2).replace('.', ','); } }, at);`,
+    стереже: 'ролик: на останньому кадрі анімація пише рівно ціни з latest.json',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: докручування не доходить до ціни',
+    файл: 'price-video.mjs',
+    було: `    tl.to(o, { v: to, duration: 0.9,`,
+    стало: `    tl.to(o, { v: to * 0.99, duration: 0.9,`,
+    стереже: 'ролик: на останньому кадрі анімація пише рівно ціни з latest.json',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: ціни округлено',
+    файл: 'price-video.mjs',
+    було: `\`<span class="price"><b class="num" data-to="\${price}">\${fmt(price)}</b>`,
+    стало: `\`<span class="price"><b class="num" data-to="\${Math.round(price)}">\${fmt(price)}</b>`,
+    стереже: 'ролик: ціни — рівно з latest.json і в тому ж порядку',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: видима ціна без коми',
+    файл: 'price-video.mjs',
+    було: `const fmt = v => v.toFixed(2).replace('.', ',');`,
+    стало: `const fmt = v => v.toFixed(2);`,
+    стереже: 'ролик: видимий текст ціни — та сама ціна з комою',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: найдешевша мережа на дні середніх цін',
+    файл: 'price-video.mjs',
+    було: `  return { name: list[0][0], price: list[0][1][key], day: latest.networksDate ?? latest.date };`,
+    стало: `  return { name: list[0][0], price: list[0][1][key], day: latest.date };`,
+    стереже: 'ролик: найдешевша мережа — на дні карти мереж',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: «найдешевша» — найдорожча',
+    файл: 'price-video.mjs',
+    було: `    .sort((a, b) => a[1][key] - b[1][key]);`,
+    стало: `    .sort((a, b) => b[1][key] - a[1][key]);`,
+    стереже: 'ролик: найдешевша мережа — справді найдешевша',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: назва мережі без екранування',
+    файл: 'price-video.mjs',
+    було: `<b>\${esc(cheap.name)}</b>`,
+    стало: `<b>\${cheap.name}</b>`,
+    стереже: 'ролик: назва мережі екранована',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: кольори зростання і падіння навпаки',
+    файл: 'price-video.mjs',
+    було: `    const col = up ? RED : down ? AC : MUT;`,
+    стало: `    const col = up ? AC : down ? RED : MUT;`,
+    стереже: 'ролик: зростання — червоне ▲ з плюсом',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: таймлайн коротший за композицію',
+    файл: 'price-video.mjs',
+    було: `    .to({}, { duration: \${DURATION} - 6.4 }, 6.4);`,
+    стало: `    .to({}, { duration: 1 }, 6.4);`,
+    стереже: 'ролик: таймлайн дотягнуто до кінця композиції',
+    сюїта: 'tests-video.mjs',
+  },
+  {
+    імя: 'ролик: лінія з однієї точки',
+    файл: 'price-video.mjs',
+    було: `  if (spark.length >= 2) {`,
+    стало: `  if (spark.length >= 1) {`,
+    стереже: 'ролик: однієї точки мало — лінії немає',
+    сюїта: 'tests-video.mjs',
+  },
+  // ── GEO 17.10.2026: sitemap, «де найдешевше», перше речення, Dataset, llms-full ──
+  {
+    імя: 'sitemap: lastmod знову день збірки',
+    файл: 'prerender.mjs',
+    було: `    const lastmod = day === undefined || day === null ? '' : \`<lastmod>\${isoDay(day)}</lastmod>\`;`,
+    стало: `    const lastmod = \`<lastmod>\${new Date().toISOString().slice(0, 10)}</lastmod>\`;`,
+    стереже: 'sitemap: lastmod — день даних сторінки',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: статичним сторінкам вигаданий день',
+    файл: 'prerender.mjs',
+    було: `    const lastmod = day === undefined || day === null ? '' : \`<lastmod>\${isoDay(day)}</lastmod>\`;`,
+    стало: `    const lastmod = \`<lastmod>\${isoDay(day ?? '2026-01-01')}</lastmod>\`;`,
+    стереже: 'sitemap: без дня — без lastmod',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: сторінкам мереж день середніх цін',
+    файл: 'prerender.mjs',
+    було: `    додати(\`\${SITE}/network/\${slug}/\`, networkModifiedDay);`,
+    стало: `    додати(\`\${SITE}/network/\${slug}/\`, latest.date);`,
+    стереже: 'sitemap: lastmod сторінки мережі — день карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: сторінка мережі не бачить дати таблиці областей',
+    файл: 'prerender.mjs',
+    було: `    додати(\`\${SITE}/network/\${slug}/\`, networkModifiedDay);`,
+    стало: `    додати(\`\${SITE}/network/\${slug}/\`, netDay);`,
+    стереже: 'sitemap: lastmod мережі — і дата таблиці областей',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: головна лише на дні середніх',
+    файл: 'prerender.mjs',
+    було: `  const днівДаних = new Map([[\`\${SITE}/\`, пізніша(latest.date, netDay)]]);`,
+    стало: `  const днівДаних = new Map([[\`\${SITE}/\`, netDay]]);`,
+    стереже: 'sitemap: lastmod головної — найпізніший день її даних',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: '«де найдешевше»: мережі порівнюються із середньою іншого дня',
+    файл: 'prerender.mjs',
+    було: `          const d = avgP && avgSameDay ? p[c.key] - avgP : null;`,
+    стало: `          const d = avgP ? p[c.key] - avgP : null;`,
+    стереже: 'найдешевше: без порівняння мереж із середньою іншого дня',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: '«де найдешевше»: порівняння вимкнено завжди',
+    файл: 'prerender.mjs',
+    було: `          const d = avgP && avgSameDay ? p[c.key] - avgP : null;`,
+    стало: `          const d = null;`,
+    стереже: 'найдешевше: того самого дня — порівняння з середньою є',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: '«де найдешевше»: середня без своєї дати',
+    файл: 'prerender.mjs',
+    було: `\${avgSameDay ? '' : \` станом на \${date}\`}`,
+    стало: ``,
+    стереже: 'найдешевше: середня підписана своєю датою',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: сторінкам мережа×паливо день середніх цін',
+    файл: 'prerender.mjs',
+    було: `      додати(\`\${SITE}/network/\${nslug}/\${f.slug}/\`, networkModifiedDay);`,
+    стало: `      додати(\`\${SITE}/network/\${nslug}/\${f.slug}/\`, latest.date);`,
+    стереже: 'sitemap: lastmod сторінки мережа×паливо — день карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: «де найдешевше» на дні середніх цін',
+    файл: 'prerender.mjs',
+    було: `      пізніша(netDay, avgP ? latest.date : undefined, regRank.length ? regDay : undefined));`,
+    стало: `      netDay);`,
+    стереже: 'sitemap: lastmod «де найдешевше» — найпізніший день його даних',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'sitemap: області на дні карти мереж',
+    файл: 'prerender.mjs',
+    було: `    додати(\`\${SITE}/region/\${slug}/\`, latest.date);`,
+    стало: `    додати(\`\${SITE}/region/\${slug}/\`, netDay);`,
+    стереже: 'sitemap: lastmod області — день середніх цін',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: '«де найдешевше»: відповідь знову на даті середніх',
+    файл: 'prerender.mjs',
+    було: `      \`Станом на <b>\${netDate}</b> найдешевший \${esc(c.q)} — у мережі`,
+    стало: `      \`Станом на <b>\${date}</b> найдешевший \${esc(c.q)} — у мережі`,
+    стереже: 'найдешевше: відповідь датована картою мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: '«де найдешевше»: «оновлено» на даті середніх',
+    файл: 'prerender.mjs',
+    було: `      sub: \`оновлено \${netDate} · рейтинг \${netRank.length} мереж АЗС · грн/л\`,`,
+    стало: `      sub: \`оновлено \${date} · рейтинг \${netRank.length} мереж АЗС · грн/л\`,`,
+    стереже: 'найдешевше: «оновлено» — дата карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'головна: мінімум мереж без їхньої дати',
+    файл: 'prerender.mjs',
+    було: `\${netDay !== latest.date ? \` (ціни мереж станом на \${netDate})\` : ''}`,
+    стало: ``,
+    стереже: 'головна: мінімум мереж підписаний датою карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'головна: підпис мереж завжди',
+    файл: 'prerender.mjs',
+    було: `\${netDay !== latest.date ? \` (ціни мереж станом на \${netDate})\` : ''}`,
+    стало: `\${\` (ціни мереж станом на \${netDate})\`}`,
+    стереже: 'головна: без розбіжності дат — без підпису мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'мережа: порівняння з середньою іншого дня',
+    файл: 'prerender.mjs',
+    було: `    const dpDiff = netDay === latest.date && Number.isFinite(avg.dp)`,
+    стало: `    const dpDiff = Number.isFinite(avg.dp)`,
+    стереже: 'мережа: без порівняння з середньою іншого дня',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'мережа: місце рахується від дорожчої',
+    файл: 'prerender.mjs',
+    було: `      .sort((a, b) => a[1].dp - b[1].dp)
+      .map(([n]) => n);`,
+    стало: `      .sort((a, b) => b[1].dp - a[1].dp)
+      .map(([n]) => n);`,
+    стереже: 'мережа: місце рахується від найдешевшої',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'мережа: перше речення зникло',
+    файл: 'prerender.mjs',
+    було: `        \`<div class="card">\${netIntro}\${natTable}</div>\` +`,
+    стало: `        \`<div class="card">\${natTable}</div>\` +`,
+    стереже: 'мережа: перше речення — ціна дизеля і місце серед мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'Dataset сторінок: dateModified — день збірки',
+    файл: 'prerender.mjs',
+    було: `    dateModified: isoDay(modifiedDay),`,
+    стало: `    dateModified: new Date().toISOString().slice(0, 10),`,
+    стереже: 'область: dateModified — день спостереження',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'Dataset головної: dateModified — день збірки',
+    файл: 'prerender.mjs',
+    було: `      dateModified: day,`,
+    стало: `      dateModified: new Date().toISOString().slice(0, 10),`,
+    стереже: 'сайт: dateModified — день спостереження',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'Dataset: distribution на чужий файл',
+    файл: 'prerender.mjs',
+    було: `    contentUrl: \`\${SITE}/data/latest.json\`,`,
+    стало: `    contentUrl: \`\${SITE}/data/history.json\`,`,
+    стереже: 'область: distribution — latest.json',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'llms-full: мережі на даті середніх',
+    файл: 'prerender.mjs',
+    було: `    \`## Ціни мереж АЗС (\${uaDate(netIso)}; національна ціна мережі — медіана по областях)\`,`,
+    стало: `    \`## Ціни мереж АЗС (\${uaDate(iso)}; національна ціна мережі — медіана по областях)\`,`,
+    стереже: 'llms-full: мережі підписані днем карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'llms-full: збірка не передає день карти мереж',
+    файл: 'prerender.mjs',
+    було: `    makeLlmsFull({ day: latest.date, netDay, avg, regionAvg, networks }),`,
+    стало: `    makeLlmsFull({ day: latest.date, netDay: latest.date, avg, regionAvg, networks }),`,
+    стереже: 'llms-full: мережі підписані днем карти мереж',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'llms-full: назви без екранування',
+    файл: 'prerender.mjs',
+    було: `    ...entries.map(([name, p]) => \`| \${md(name)} |`,
+    стало: `    ...entries.map(([name, p]) => \`| \${name} |`,
+    стереже: 'llms-full: назва з дужками екранована',
+    сюїта: 'tests-geo.mjs',
+  },
+  {
+    імя: 'джерело цін знову без посилання',
+    файл: 'prerender.mjs',
+    було: `Джерело цін: <a href="\${SOURCE_URL}" rel="noopener">Мінфін</a> (Консалтингова група А-95).`,
+    стало: `Джерело цін: Мінфін (Консалтингова група А-95).`,
+    стереже: 'сторінки: джерело цін — посилання на Мінфін',
+    сюїта: 'tests-geo.mjs',
+  },
   {
     імя: 'повернути загальну дату в «оновлено» сторінки мережі',
     файл: 'prerender.mjs',
@@ -1477,14 +1813,14 @@ const ПІДСАДКИ = [
     імя: `деплой без прав Pages`,
     файл: `../.github/workflows/collect.yml`,
     було: `    if: needs.collect.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pages: write
       id-token: write
 `,
     стало: `    if: needs.collect.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 `,
     стереже: `collect.yml: pages/id-token — лише задачі deploy`,
     сюїта: 'tests-security.mjs',
@@ -1646,10 +1982,10 @@ const ПІДСАДКИ = [
     імя: `ig-refresh: задача з write-all при порожніх правах згори`,
     файл: `../.github/workflows/ig-refresh.yml`,
     було: `  refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 `,
     стало: `  refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: write-all
 `,
     стереже: `ig-refresh.yml: задачі теж без прав`,
@@ -1698,7 +2034,8 @@ function прогін(корінь, сюїта = 'tests-parser.mjs') {
     // справжні модулі звідси — посиланням, копія їх не отримує й не видаляє.
     const out = execFileSync(process.execPath, [path.join(корінь, 'scripts', сюїта)],
       { encoding: 'utf8', stdio: 'pipe', timeout: 300000,
-        env: { ...process.env, DM_NODE_MODULES: path.join(SCRIPTS, '..', 'node_modules') } });
+        env: { ...process.env, DM_NODE_MODULES: path.join(SCRIPTS, '..', 'node_modules'),
+          DM_VIDEO_TOOL_PACKAGE: path.join(SCRIPTS, '..', '.github', 'price-video', 'package.json') } });
     return { впало: false, текст: out };
   } catch (e) {
     return { впало: true, текст: String(e.stdout ?? '') + String(e.stderr ?? '') };
@@ -1713,7 +2050,9 @@ function накопії(робота) {
     cpSync(SCRIPTS, path.join(корінь, 'scripts'), { recursive: true });
     cpSync(path.join(SCRIPTS, '..', 'src'), path.join(корінь, 'src'), { recursive: true });
     // проби безпеки читають workflow і .gitignore — у копії вони теж мусять бути
-    cpSync(path.join(SCRIPTS, '..', '.github'), path.join(корінь, '.github'), { recursive: true });
+    cpSync(path.join(SCRIPTS, '..', '.github'), path.join(корінь, '.github'), {
+      recursive: true, filter: source => path.basename(source) !== 'node_modules',
+    });
     cpSync(path.join(SCRIPTS, '..', '.gitignore'), path.join(корінь, '.gitignore'));
     return робота(корінь);
   } finally {
@@ -1729,7 +2068,9 @@ function накопії(робота) {
 // вони самі по собі справні. 20.09.2026 так і вийшло: tests-parser.mjs був
 // червоний ще до правки, і разом із ним мовчки випали всі інші.
 const хворі = new Set();
-for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs', 'tests-security.mjs']) {
+console.log(`браузерні підсадки: ${browserTests ? 'увімкнені' : 'вимкнені (DM_VIDEO_BROWSER_TESTS=1 для повного прогона)'}`);
+for (const сюїта of ['tests-parser.mjs', 'tests-collect.mjs', 'tests-geo.mjs', 'tests-front.mjs', 'tests-security.mjs', 'tests-video.mjs',
+  ...(browserTests ? ['tests-video-browser.mjs'] : [])]) {
   const базовий = накопії(к => прогін(к, сюїта));
   if (базовий.впало) {
     хворі.add(сюїта);

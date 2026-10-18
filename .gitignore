@@ -8,6 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+
+# Артефакти локальної композиції відео; вихідний код — scripts/price-video.mjs.
+/video/
+/renders/
 dist
 dist-ssr
 *.local
