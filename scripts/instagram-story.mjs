@@ -8,7 +8,8 @@
 // Тому адресу сайта пишемо прямо на картинці.
 //
 //   node scripts/instagram-story.mjs --card   → public/cards/story-<дата>.jpg
-//   node scripts/instagram-story.mjs          → публікація
+//   node scripts/instagram-story.mjs --reserve → запис наміру перед публікацією
+//   node scripts/instagram-story.mjs           → публікація зарезервованої сторіс
 //
 // env: INSTAGRAM_TOKEN
 
@@ -19,6 +20,8 @@ import { AURORA_DEFS, AURORA_RECTS } from './lib/aurora.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(ROOT, 'public', 'data');
+const STORY_STATE = path.join(DATA_DIR, 'ig-story.json');
+const STORY_PICK = path.join(DATA_DIR, 'ig-story-pick.json');
 const CARDS_DIR = path.join(ROOT, 'public', 'cards');
 const RAW = 'https://raw.githubusercontent.com/Ros-ua/diesel-monitor/main/public/cards';
 const API = 'https://graph.instagram.com/v23.0';
@@ -44,6 +47,19 @@ async function readJson(file, fallback = null) {
     return JSON.parse(await readFile(path.join(DATA_DIR, file), 'utf-8'));
   } catch {
     return fallback;
+  }
+}
+
+async function readStoryState() {
+  try {
+    const state = JSON.parse(await readFile(STORY_STATE, 'utf-8'));
+    if (!state || typeof state !== 'object' || Array.isArray(state)) {
+      throw new Error('Некоректний стан сторіс');
+    }
+    return state;
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw error;
   }
 }
 
@@ -104,15 +120,18 @@ function storySvg(latest, spark) {
 
 async function buildCard() {
   const latest = await readJson('latest.json');
-  if (!latest?.avg?.dp) return console.log('story: немає даних цін — пропускаю');
+  if (!latest?.avg?.dp) {
+    await writeFile(STORY_PICK, JSON.stringify({ skip: true }));
+    return console.log('story: немає даних цін — пропускаю');
+  }
 
   // Сторіс тільки на СВІЖИХ цінах. Мінфін оновлює дані по буднях ~14:00, тож у
   // неділю й понеділок вранці в базі ще п'ятничні числа — показувати їх удруге
   // немає сенсу. Порівнюємо з датою даних, які вже виходили в сторіс.
-  const state = await readJson('ig-story.json', {});
+  const state = await readStoryState();
   if (state.lastDataDate === latest.date && process.env.IG_FORCE !== '1') {
     console.log(`story: ціни за ${latest.date} вже виходили — нових даних немає, пропускаю`);
-    await writeFile(path.join(DATA_DIR, 'ig-story-pick.json'), JSON.stringify({ skip: true }));
+    await writeFile(STORY_PICK, JSON.stringify({ skip: true }));
     return;
   }
 
@@ -128,7 +147,7 @@ async function buildCard() {
   const file = `story-${new Date().toISOString().slice(0, 10)}.jpg`;
   await mkdir(CARDS_DIR, { recursive: true });
   await writeFile(path.join(CARDS_DIR, file), jpg);
-  await writeFile(path.join(DATA_DIR, 'ig-story-pick.json'), JSON.stringify({ file, date: latest.date }));
+  await writeFile(STORY_PICK, JSON.stringify({ file, date: latest.date }));
 
   const old = (await readdir(CARDS_DIR)).filter(f => f.startsWith('story-')).sort().slice(0, -5);
   for (const f of old) await unlink(path.join(CARDS_DIR, f));
@@ -136,19 +155,39 @@ async function buildCard() {
   console.log(`story: картка ${file} (дані за ${latest.date})`);
 }
 
-async function publish() {
+function storyReservation(pick) {
+  const { GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt } = process.env;
+  if (!/^\d+$/.test(runId ?? '') || !/^\d+$/.test(attempt ?? '') ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(pick.date) || !/^story-\d{4}-\d{2}-\d{2}\.jpg$/.test(pick.file)) {
+    throw new Error('Некоректний резерв сторіс');
+  }
+  return { date: pick.date, file: pick.file, runId, attempt };
+}
+
+async function publish(reserveOnly) {
   if (!token) return console.log('story: INSTAGRAM_TOKEN не заданий — пропускаю');
 
+  const state = await readStoryState();
+  if (reserveOnly && state.pending) {
+    throw new Error('Є незавершений резерв сторіс. Перевірте Instagram перед повтором');
+  }
   const pick = await readJson('ig-story-pick.json');
   if (!pick?.file || pick.skip) return console.log('story: немає нових цін — пропускаю');
 
-  const state = await readJson('ig-story.json', {});
-  const today = new Date().toISOString().slice(0, 10);
   // Обмеження саме на ДАТУ ДАНИХ, а не на календарний день: інакше ранкова
   // сторіс зі вчорашніми цінами займає слот, і коли вдень приходять свіжі —
   // нова вже не виходить.
   if (state.lastDataDate === pick.date && process.env.IG_FORCE !== '1')
     return console.log(`story: ціни за ${pick.date} вже виходили — пропускаю`);
+
+  const pending = storyReservation(pick);
+  if (reserveOnly) {
+    await writeFile(STORY_STATE, JSON.stringify({ ...state, pending }));
+    return;
+  }
+  if (!state.pending || Object.entries(pending).some(([key, value]) => state.pending[key] !== value)) {
+    throw new Error('Для цього запуску потрібен резерв сторіс');
+  }
 
   const me = await fetch(`${API}/me?fields=id&access_token=${token}`).then(r => r.json());
   if (!me.id) throw new Error(`me: ${JSON.stringify(me)}`);
@@ -175,9 +214,9 @@ async function publish() {
   if (!pub.id) throw new Error(`publish: ${JSON.stringify(pub)}`);
 
   await writeFile(
-    path.join(DATA_DIR, 'ig-story.json'),
+    STORY_STATE,
     JSON.stringify({
-      lastDay: today,
+      lastDay: new Date().toISOString().slice(0, 10),
       lastDataDate: pick.date, // за якими саме цінами вийшла сторіс
       mediaId: pub.id,
       postedAt: new Date().toISOString(),
@@ -187,7 +226,7 @@ async function publish() {
 }
 
 if (process.argv[1]?.endsWith('instagram-story.mjs')) {
-  (process.argv[2] === '--card' ? buildCard() : publish()).catch(e => {
+  (process.argv[2] === '--card' ? buildCard() : publish(process.argv[2] === '--reserve')).catch(e => {
     console.error('story ЗБІЙ:', e.message);
     process.exit(1);
   });
