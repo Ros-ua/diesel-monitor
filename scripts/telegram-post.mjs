@@ -30,6 +30,28 @@ async function readJson(file, fallback = null) {
 
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+async function sendTelegram(method, options) {
+  let response;
+  let result;
+  try {
+    response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(25000),
+      ...options,
+    });
+    result = await response.json();
+  } catch (error) {
+    const code = error.cause?.code ?? error.name;
+    const reason = /^[A-Z_][A-Z0-9_]{2,39}$/.test(code) || code === 'TimeoutError'
+      ? code : 'response unavailable';
+    throw new Error(`${method}: delivery unconfirmed (${reason})`);
+  }
+  if (result?.ok !== true) {
+    const status = Number.isInteger(result?.error_code) ? result.error_code : response.status;
+    throw new Error(`${method}: rejected by Telegram (HTTP ${status})`);
+  }
+}
+
 async function main() {
   if (!token || !channel) {
     console.log('tg: TELEGRAM_BOT_TOKEN або TELEGRAM_CHANNEL не задані — пропускаю');
@@ -79,24 +101,25 @@ async function main() {
     .slice(-30)
     .map(x => ({ value: x.avg.dp }));
 
-  // пост = картка з цінами + підпис (той самий текст). Якщо картка не згенерувалась — текстом.
-  let res;
+  // Текстом надсилаємо лише якщо картку не вдалося підготувати до відправлення.
+  let form;
   try {
     const { makeCard } = await import('./price-card.mjs');
     const png = await makeCard(latest, spark);
-    const form = new FormData();
+    form = new FormData();
     form.append('chat_id', channel);
     form.append('caption', text);
     form.append('parse_mode', 'HTML');
     form.append('photo', new Blob([png], { type: 'image/png' }), 'prices.png');
-    res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-      method: 'POST',
-      body: form,
-    }).then(r => r.json());
-  } catch (e) {
-    console.log(`tg: картка не згенерувалась (${e.message}) — шлю текстом`);
-    res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
+  } catch {
+    form = undefined;
+    console.log('tg: картка не згенерувалась — шлю текстом');
+  }
+
+  if (form) {
+    await sendTelegram('sendPhoto', { body: form });
+  } else {
+    await sendTelegram('sendMessage', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: channel,
@@ -104,10 +127,8 @@ async function main() {
         parse_mode: 'HTML',
         link_preview_options: { url: SITE, prefer_small_media: true },
       }),
-    }).then(r => r.json());
+    });
   }
-
-  if (!res.ok) throw new Error(`Telegram API: ${JSON.stringify(res)}`);
 
   await writeFile(
     path.join(DATA_DIR, 'tg-post.json'),

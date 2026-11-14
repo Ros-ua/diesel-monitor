@@ -56,11 +56,17 @@ jobs:
             echo "changed=$meaningful" >> "$GITHUB_OUTPUT"
           fi
       - name: Пост у Telegram-канал
+        id: telegram
         continue-on-error: true # падіння посту не валить збір цін
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL }}
         run: node scripts/telegram-post.mjs
+      - name: Позначка збою Telegram
+        if: steps.telegram.outcome == 'failure'
+        run: |
+          echo '::warning title=Telegram::Відправлення цін у Telegram не підтверджено. Див. крок посту.'
+          echo '⚠️ Відправлення цін у Telegram не підтверджено.' >> "$GITHUB_STEP_SUMMARY"
       - name: Коміт стану посту
         continue-on-error: true
         run: |
